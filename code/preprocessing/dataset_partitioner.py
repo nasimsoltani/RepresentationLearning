@@ -2,9 +2,9 @@ import glob
 import random
 import pickle
 
-base_path = '/home/ns38942/Oracle/dataset/'
+base_path = '/home/ns38942/RepresentationLearning/dataset/'
 portion_to_use = 0.5
-pkl_path = '/home/ns38942/Oracle/pkl_files/dataset.pkl'
+pkl_path = '/home/ns38942/RepresentationLearning/pkl_files/dataset.pkl'
 
 # create Radio list
 radio_list = list(range(0,16))
@@ -65,14 +65,16 @@ for radio in radio_list:
 print(len(RF_train_list))
 
 # now train/val/test partitions for all tasks are ready, dump them in a pickle file
-RF_temp_dict = { 'train' : RF_train_list, 'val' : RF_val_list, 'test' : RF_test_list }
+"""RF_temp_dict = { 'train' : RF_train_list, 'val' : RF_val_list, 'test' : RF_test_list }
 CFO_temp_dict = { 'train' : CFO_train_list, 'val' : CFO_val_list, 'test' : CFO_test_list }
 Channel_temp_dict = { 'train' : Channel_train_list, 'val' : Channel_val_list, 'test' : Channel_test_list }
 
 partition_dict = {'RF_Fingerprinting':RF_temp_dict, 
 				'Channel_Estimation':Channel_temp_dict,
 				'CFO_Estimation':CFO_temp_dict  }
+"""
 
+partition_dict = {'train': RF_train_list, 'val': RF_val_list, 'test': RF_test_list}
 
 with open (pkl_path, 'wb') as handle:
 	pickle.dump(partition_dict, handle)
