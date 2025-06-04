@@ -12,52 +12,97 @@ import torch
 from torch.fft import fft as FFT
 from torch.fft import fftshift as FFTshift
 import os
-#from PIL import Image, ImageChops
 import cv2
 import glob
+from scipy.io import loadmat 
 
-def read_file(file_path, file_type):
-	if file_type == 'iq':
-		IQ = np.fromfile(file_path, dtype=np.complex64)  #length = 16384
-		IQ = torch.from_numpy(IQ)
-		# reshape the IQ sequence and remove the extra axis
-		# calculate RMS and normalize the IQ sequence
-		RMS = torch.sqrt(torch.mean(torch.real(IQ)**2+torch.imag(IQ)**2))
-		IQ = IQ/RMS
-		# separate I and Q as two separate channels and bring the channels
-		# to the first dimension for pytorch compatibility
+def read_file(file_path):
+	""" gets a file_path for RF fingerprinting input part, and return associated data parts
+	for CFO estimation and channel estimation too """
 
-		IQ_separated = torch.zeros((2,IQ.shape[0]))
-		IQ_separated[0,:] = torch.real(IQ)
-		IQ_separated[1,:] = torch.imag(IQ)
-		X = IQ_separated
-	else:
-		#this_folder = file_path.split('/')[-2]
-		#filename = file_path.split('/')[-1].split('.')[0]
-		#new_file_path = os.path.join(os.path.abspath('cropped_images'), this_folder, str(filename)+'.jpg') 
-		X = cv2.imread(file_path)          # reading the image
-		
-		#X = Image.open(new_file_path)	
-		# normalize, resize, and reshape the image
-		X = X/255.
-		X = cv2.resize(X, (300,200))         # dimensions must be (width, height)
-		#X = X.resize((160, 90))
-		X = np.moveaxis(X, -1, 0)           # reshape to channel first	
-		X = torch.from_numpy(X)
+	print(file_path)
 
-	return X
+	# file_path is the RFfingerprinting file path, read all 3 paths
+	content = loadmat(file_path)
+	RF_input = torch.from_numpy(content['Packet'])[:,0]
+	RF_output = content['Radio'][0]
 
-def IQ2Img_path_convertor(IQ_source_list):
-	image_base = os.path.abspath('cropped_images')
-	image_list = []
-	print('******** converting IQ file paths to spectrogram paths *******')
-	for filepath in tqdm(IQ_source_list):
-		filename = filepath.split('/')[-1].split('.')[0]
-		foldername = filepath.split('/')[-2]
-		image_path = os.path.join(image_base,foldername,filename)
-		image_list.extend(glob.glob(image_path+'*'))
-		
-	return image_list
+	file_path_list = file_path.split('/')
+	file_path_list.pop(0)
+	filename = file_path_list[-1]
+	file_path_list.pop()
+	
+	suffix_filename = filename.lstrip('RFfingerprinting')
+
+	# for CFO filepath
+	new_filename = '/CFOEstimation'+suffix_filename
+	new_filepath = ''
+	for element in file_path_list:
+		new_filepath +='/'+ element
+	new_filepath += new_filename
+
+	content = loadmat(new_filepath)
+	CFO_input = torch.from_numpy(content['LSTF'])[:,0]
+	CFO_output = torch.from_numpy(content['CFO'])
+
+	# for Channel Estimation filepath
+	new_filename = '/ChannelEstimation'+suffix_filename
+	new_filepath = ''
+	for element in file_path_list:
+		new_filepath +='/'+ element
+	new_filepath += new_filename
+
+	content = loadmat(new_filepath)
+	Channel_input = torch.from_numpy(content['LLTF'])[:,0]
+	Channel_output = torch.from_numpy(content['EstChannnel'])[:,0]
+
+	
+	# normalize everything and send out
+
+
+	# calculate RMS and normalize the IQ sequence
+	RMS = torch.sqrt(torch.mean(torch.real(RF_input)**2+torch.imag(RF_input)**2))
+	RF_input = RF_input/RMS
+	
+	RMS = torch.sqrt(torch.mean(torch.real(Channel_input)**2+torch.imag(Channel_input)**2))
+	Channel_input = Channel_input/RMS
+	RMS = torch.sqrt(torch.mean(torch.real(Channel_output)**2+torch.imag(Channel_output)**2))
+	Channel_output = Channel_output/RMS
+	
+	RMS = torch.sqrt(torch.mean(torch.real(CFO_input)**2+torch.imag(CFO_input)**2))
+	CFO_input = CFO_input/RMS
+	
+	# separate I and Q as two separate channels and bring the channels
+	# to the first dimension for pytorch compatibility
+
+
+	print(RF_input.shape, CFO_input.shape, Channel_input.shape)
+	print(Channel_output.shape)
+
+	temp = torch.zeros((2,RF_input.shape[0]))
+	temp[0,:] = torch.real(RF_input)
+	temp[1,:] = torch.imag(RF_input)
+	RF_X = temp
+	RF_y = int(RF_output.lstrip('Radio'))
+
+	temp = torch.zeros((2,Channel_input.shape[0]))
+	temp[0,:] = torch.real(Channel_input)
+	temp[1,:] = torch.imag(Channel_input)
+	Channel_X = temp
+	
+	temp = torch.zeros((2,Channel_output.shape[0]))
+	temp[0,:] = torch.real(Channel_output)
+	temp[1,:] = torch.imag(Channel_output)
+	Channel_y = temp
+
+	temp = torch.zeros((2,CFO_input.shape[0]))
+	temp[0,:] = torch.real(CFO_input)
+	temp[1,:] = torch.imag(CFO_input)
+	CFO_X = temp
+	CFO_y = CFO_output
+
+	return [RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y]
+
 
 class TrainDataset(Dataset):
 	def __init__(self, IQ_file_list, labels, class_ids, args, slice_size, rehearsal_buffer, round_index):
@@ -68,11 +113,6 @@ class TrainDataset(Dataset):
 		self.slice_size = slice_size
 		self.args = args
 		
-		if args.spectrogram:
-			self.file_type = 'spectrogram'	
-			self.IQ_file_list = IQ2Img_path_convertor(self.IQ_file_list)
-		else:
-			self.file_type = 'iq'	
 	
 		if round_index == 1:
 			self.data_cache = {}
@@ -84,8 +124,7 @@ class TrainDataset(Dataset):
 			# load all data to cache:
 			print('Adding all files to cache')
 			for IQ_path in tqdm(self.IQ_file_list):
-				#this_class = self.labels[IQ_path]
-				this_class = IQ_path.split('/')[-2]	
+				this_class = IQ_path.split('/')[-1].split('_')[-3]	
 				self.__add_to_cache(IQ_path, this_class)
 		else:
 			self.data_cache = rehearsal_buffer
@@ -98,16 +137,17 @@ class TrainDataset(Dataset):
 		return len(self.data_cache[list(self.data_cache.keys())[0]])*100*len(list(self.data_cache.keys()))
 
 	def __add_to_cache(self, file_path, this_class):
-		X = read_file(file_path, self.file_type)
-		self.data_cache[this_class].append(X)
+		Xy_bundle = read_file(file_path, self.file_type)
+		self.data_cache[this_class].append(Xy_bundle)
 
 	def __getitem__(self, index):
 
 		#Generate two samples of data (anchor and positive)
 		this_random_class = random.sample(list(self.data_cache.keys()), 1)[0]
-		anchor_and_positive = random.sample(self.data_cache[this_random_class], 2)
-		X = anchor_and_positive[0]
-		""" No slicing """
+		
+		RF_X, RF_y,  = random.sample(self.data_cache[this_random_class], 1)[0]
+		
+		""" slice only the RF_X """
 		slice_index = random.randint(0, X.shape[1] - self.slice_size)  # pick a random index from which a slice starts
 		X = X[:, slice_index:slice_index+self.slice_size]    # pick the slice with determined length and create X (input)
 		positive_X = anchor_and_positive[1]
@@ -121,100 +161,18 @@ class TrainDataset(Dataset):
 		negative_class = random.sample(negative_class_list, 1)[0]
 		negative_X = random.sample(self.data_cache[negative_class], 1)[0]
 		
-		""" No slicing """
+		""" slicing """
 		slice_index = random.randint(0, negative_X.shape[1] - self.slice_size)  # pick a random index from which a slice starts
 		negative_X = negative_X[:, slice_index:slice_index+self.slice_size]    # pick the slice with determined length and create X (input)
 		
 
-		## augmentation ##
-
-
-		if self.args.augmentation: 
-			standard_dev = 1.0/50.0   #1/(2*9*np.sqrt(2))
-			this_filter = torch.normal(mean=0.0, std=standard_dev, size = (2,8))
-			this_filter = torch.unsqueeze(torch.unsqueeze(this_filter,0),0)
-			#if this_random_class == 'CW': 
-			X = torch.squeeze(torch.squeeze(F.conv2d(torch.unsqueeze(torch.unsqueeze(X,0),0), this_filter, padding='same', groups=1)))
-			positive_X = torch.squeeze(torch.squeeze(F.conv2d(torch.unsqueeze(torch.unsqueeze(positive_X,0),0), this_filter, padding='same', groups=1)))
-		
-			#if negative_class == 'CW': 
-			negative_X = torch.squeeze(torch.squeeze(F.conv2d(torch.unsqueeze(torch.unsqueeze(negative_X,0),0), this_filter, padding='same', groups=1)))
-
-
-
-		if self.args.fft:
-			# Do FFT
-			# convert to complex
-			complex_X = X[0,:] + 1j*X[1,:]
-			complex_negative_X = negative_X[0,:] + 1j*negative_X[1,:]
-			complex_positive_X = positive_X[0,:] + 1j*positive_X[1,:]
-		
-			complex_X = FFT(complex_X)		
-			complex_positive_X = FFT(complex_positive_X)		
-			complex_negative_X = FFT(complex_negative_X)		
-
-			complex_X = FFTshift(complex_X)
-			complex_positive_X = FFTshift(complex_positive_X)
-			complex_negative_X = FFTshift(complex_negative_X)
-	
-	
-
-			X[0,:] = torch.real(complex_X)			
-			X[1,:] = torch.imag(complex_X)			
-			positive_X[0,:] = torch.real(complex_positive_X)			
-			positive_X[1,:] = torch.imag(complex_positive_X)			
-			negative_X[0,:] = torch.real(complex_negative_X)			
-			negative_X[1,:] = torch.imag(complex_negative_X)			
-
-		
-		#if self.args.mask:
-			
-	
-
-	
-		"""RMS = torch.sqrt(torch.mean(X[0,:]**2 + X[1,:]**2))
-		X  = X/RMS
-		RMS = torch.sqrt(torch.mean(positive_X[0,:]**2 + positive_X[1,:]**2))
-		positive_X = positive_X/RMS
-		RMS = torch.sqrt(torch.mean(negative_X[0,:]**2 + negative_X[1,:]**2))
-		negative_X = negative_X/RMS"""
-
-
-
-
 
 
 		return X, positive_X, negative_X, y
 
-class SpectrogramTrainDataset(TrainDataset):
-	def __len__(self):
-		# loop over the class as many as we define here
-		return len(self.data_cache[list(self.data_cache.keys())[0]])*len(list(self.data_cache.keys()))
+if __name__ == '__main__':
 
+	file_path = '/home/ns38942/RepresentationLearning/dataset/RFfingerprinting_run1_Radio9_8ft_984.mat' 
 
-	def __getitem__(self, index):
-		#Generate two samples of data (anchor and positive)
-		this_random_class = random.sample(list(self.data_cache.keys()), 1)[0]
-		anchor_and_positive = random.sample(self.data_cache[this_random_class], 2)
-		X = anchor_and_positive[0]
-
-		positive_X = anchor_and_positive[1]
-		y = int(self.class_ids[this_random_class])
-
-		## load the negative sample
-		negative_class_list = list(self.data_cache.keys())
-		negative_class_list.remove(this_random_class)
-		negative_class = random.sample(negative_class_list, 1)[0]
-		negative_X = random.sample(self.data_cache[negative_class], 1)[0]
-
-		return X, positive_X, negative_X, y
-
-# class TestDataset(TrainDataset):
-#     # over-writing the __getitem__ function in the parent class
-#     def __getitem__(self, index):
-#         IQ_path = list(self.data_cache.keys())[index]
-#         X = self.data_cache[list(self.data_cache.keys())[index]]       # creating X (input)
-#         y = int(self.class_ids[self.labels[list(self.data_cache.keys())[index]]])   # creating y (output)
-
-#         return X, y, IQ_path
-
+	[X1, y1, X2, y2, X3, y3] = read_file(file_path)
+	print(X1.shape, y1, X2.shape, y2.shape, X3.shape, y3.shape)
