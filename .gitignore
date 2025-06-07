@@ -4,3 +4,4 @@ KRI-*
 dataset/
 mat_dataset/
 .venv/
+results/

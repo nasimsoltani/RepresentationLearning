@@ -2,12 +2,14 @@ import glob
 import os
 from tqdm import tqdm
 
-destination_dir = '/home/ns38942/RepresentationLearning/dataset/'
-source_dir_base = '/home/ns38942/RepresentationLearning/'
+source_dir_base = '/home/hofmann/Documents/projects/RepresentationLearning/dataset/OracleDatasetProcessed-selected'
+destination_dir = '/home/hofmann/Documents/projects/RepresentationLearning/dataset/OracleDatasetProcessed-arranged'
 
 for i in range(0,8):
-	source_dir = source_dir_base + 'Run1-Radio'+str(2*i)+'-Radio'+str(2*i+1)
+	source_dir = source_dir_base + '/Run1-Radio'+str(2*i)+'-Radio'+str(2*i+1)
+	print(source_dir)
 	source_file_list = glob.glob(source_dir+'/*.mat')
+	print(len(source_file_list))
 
 	for file_path in tqdm(source_file_list):
 		filename = file_path.split('/')[-1]

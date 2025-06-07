@@ -12,8 +12,6 @@ import torch
 from torch.fft import fft as FFT
 from torch.fft import fftshift as FFTshift
 import os
-import cv2
-import glob
 from scipy.io import loadmat 
 
 def read_file(file_path):
@@ -94,35 +92,16 @@ class TrainDataset(Dataset):
 		self.class_ids = class_ids
 		self.args = args
 		
-		self.data_cache = {}
-
-		# create keys (classes) for data_cache
-		for class_name in list(self.class_ids.keys()):
-			self.data_cache[class_name] = []
-
-		# load all data to cache:
-		print('Adding all files to cache')
-		for IQ_path in tqdm(self.file_list):
-			this_class = IQ_path.split('/')[-1].split('_')[-3]	
-			self.__add_to_cache(IQ_path, this_class)
-
-		print('len of file_list and data_cache: ')
-		print(len(self.file_list), len(self.data_cache.keys()))
+		# shuffle the file list
+		random.shuffle(self.file_list)
 
 	def __len__(self):
-	# loop over the class as many as we define here
-		return len(self.data_cache[list(self.data_cache.keys())[0]])*100*len(list(self.data_cache.keys()))
-
-	def __add_to_cache(self, file_path, this_class):
-		Xy_bundle = read_file(file_path)
-		self.data_cache[this_class].append(Xy_bundle)
+		return len(self.file_list)
 
 	def __getitem__(self, index):
 
-		#Generate two samples of data (anchor and positive)
-		this_random_class = random.sample(list(self.data_cache.keys()), 1)[0]
-		
-		[RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y]  = random.sample(self.data_cache[this_random_class], 1)[0]
+		file_path = self.file_list[index]
+		[RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y]  = read_file(file_path)
 		
 		""" slice only the RF_X """
 		slice_index = random.randint(0, RF_X.shape[1] - self.args.slice_len)  # pick a random index from which a slice starts
@@ -133,7 +112,9 @@ class TrainDataset(Dataset):
 
 if __name__ == '__main__':
 
-	file_path = '/home/ns38942/RepresentationLearning/dataset/RFfingerprinting_run1_Radio9_8ft_984.mat' 
+	file_path = '/home/hofmann/Documents/projects/RepresentationLearning/dataset/OracleDatasetProcessed-arranged/RFfingerprinting_run1_Radio9_8ft_984.mat' 
 
 	[X1, y1, X2, y2, X3, y3] = read_file(file_path)
 	print(X1.shape, y1, X2.shape, y2.shape, X3.shape, y3.shape)
+	print(y3)
+#torch.Size([2, 4000]) 9 torch.Size([2, 160]) torch.Size([1, 1]) torch.Size([2, 160]) torch.Size([2, 52])
