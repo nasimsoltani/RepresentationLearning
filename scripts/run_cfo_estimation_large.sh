@@ -7,7 +7,7 @@ uv run python /home/hofmann/Documents/projects/RepresentationLearning/code/rep_l
     --task cfo_estimation_large \
     --pkl_dataset_path "/home/hofmann/Documents/projects/RepresentationLearning/dataset/rf_partition_dict_0.5.pkl" \
     --epochs 300 \
-    --batch_size 32 \
+    --batch_size 8 \
     --lr 1e-4 \
     --gpu_id 0 \
     --save_epochs 40 \

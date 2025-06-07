@@ -10,45 +10,53 @@ import numpy as np
 class RFFingerprintingNet(nn.Module):
 	""" input shape needs to be (b, 2, 1024) """
 
-	def __init__(self, slice_size, num_classes):
-		
+	def __init__(self, slice_size, num_classes, mtl=False, common_rep_dim=512):
 		super(RFFingerprintingNet, self).__init__()
-		
+		self.mtl = mtl
 		dropProb = 0.25
-		channel = 64 
-		self.conv0 = nn.Conv1d(2, channel, kernel_size=7, padding="same")
-		self.conv1 = nn.Conv1d(channel, channel, kernel_size=7, padding="same")
-		self.conv2 = nn.Conv1d(channel, channel, kernel_size=5, padding="same")
-		self.pool1 = nn.MaxPool1d(2,2)
-		self.flatten = nn.Flatten()
-		self.hidden1 = nn.Linear(int(slice_size*2), 256) 
-		self.hidden2 = nn.Linear(256, 128)
-		self.out = nn.Linear(128, num_classes)
-		self.drop = nn.Dropout(dropProb)
-		self.relu = nn.ReLU()
 
-	def forward(self, x):
-		
-		x = self.relu(self.conv0(x))
-		x = self.relu(self.conv2(x))
-		x = self.pool1(x)
+		if not self.mtl:
+			channel = 64 
+			self.conv0 = nn.Conv1d(2, channel, kernel_size=7, padding="same")
+			self.conv1 = nn.Conv1d(channel, channel, kernel_size=7, padding="same")
+			self.conv2 = nn.Conv1d(channel, channel, kernel_size=5, padding="same")
+			self.pool1 = nn.MaxPool1d(2,2)
+			self.flatten = nn.Flatten()
+			self.relu = nn.ReLU()
+			classifier_input_size = channel * (slice_size // (2**5))
+		else:
+			classifier_input_size = common_rep_dim
 
-		# TODO: Ask if weight sharing is intentional.
-		for _ in range(4):
-			
-			x = self.relu(self.conv1(x))
+		self.classifier = nn.Sequential(
+			nn.Dropout(dropProb),
+			nn.Linear(classifier_input_size, 256),
+			nn.ReLU(),
+			nn.Dropout(dropProb),
+			nn.Linear(256, 128),
+			nn.ReLU(),
+			nn.Dropout(dropProb),
+			nn.Linear(128, num_classes)
+		)
+
+	def forward(self, x, common_rep=None):
+		if self.mtl:
+			if common_rep is None:
+				raise ValueError("common_rep is required for MTL mode")
+			features = common_rep
+		else:
+			x = self.relu(self.conv0(x))
 			x = self.relu(self.conv2(x))
 			x = self.pool1(x)
 
-		x = self.flatten(x)
-		x = self.drop(x)
-		x = self.relu(self.hidden1(x))
-		x = self.drop(x)
-		x = self.relu(self.hidden2(x))
-		x = self.drop(x)
-		x = self.out(x)
-		
-		return x
+			# TODO: Ask if weight sharing is intentional.
+			for _ in range(4):
+				
+				x = self.relu(self.conv1(x))
+				x = self.relu(self.conv2(x))
+				x = self.pool1(x)
+
+			features = self.flatten(x)
+		return self.classifier(features)
 
 # Input Bx2x160, Output Bx2x52, Regression Task
 class ChannelNet(nn.Module):
@@ -57,42 +65,53 @@ class ChannelNet(nn.Module):
     Input shape: (B, 2, 160)
     Output shape: (B, 2, 52)
     """
-    def __init__(self):
+    def __init__(self, mtl=False, common_rep_dim=512):
         super(ChannelNet, self).__init__()
+        self.mtl = mtl
 
-        # MLP for the real part of the CSI
-        self.mlp_real = nn.Sequential(
-            nn.Linear(160, 512),
-            nn.ReLU(),
-            nn.Dropout(0.15),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Linear(256, 52)
-        )
+        if not self.mtl:
+            # MLP for the real part of the CSI
+            self.mlp_real = nn.Sequential(
+                nn.Linear(160, 512),
+                nn.ReLU(),
+                nn.Dropout(0.15),
+                nn.Linear(512, 256),
+                nn.ReLU(),
+                nn.Linear(256, 52)
+            )
 
-        # MLP for the imaginary part of the CSI
-        self.mlp_imag = nn.Sequential(
-            nn.Linear(160, 512),
-            nn.ReLU(),
-            nn.Dropout(0.15),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Linear(256, 52)
-        )
+            # MLP for the imaginary part of the CSI
+            self.mlp_imag = nn.Sequential(
+                nn.Linear(160, 512),
+                nn.ReLU(),
+                nn.Dropout(0.15),
+                nn.Linear(512, 256),
+                nn.ReLU(),
+                nn.Linear(256, 52)
+            )
+        else:
+            self.mtl_mlp = nn.Sequential(
+                nn.Linear(common_rep_dim, 256),
+                nn.ReLU(),
+                nn.Linear(256, 104) # 2 * 52 for real and imag
+            )
 
-    def forward(self, x):
-        # x is expected to be of shape (B, 2, 160)
-        # x[:, 0, :] is the real part (B, 160)
-        # x[:, 1, :] is the imaginary part (B, 160)
-        
-        real_in = x[:, 0, :]
-        imag_in = x[:, 1, :]
+    def forward(self, x, common_rep=None):
+        if self.mtl:
+            if common_rep is None:
+                raise ValueError("common_rep is required for MTL mode")
+            output = self.mtl_mlp(common_rep)
+            output = output.view(output.size(0), 2, 52)
+        else:
+            # x is expected to be of shape (B, 2, 160)
+            real_in = x[:, 0, :]
+            imag_in = x[:, 1, :]
 
-        real_out = self.mlp_real(real_in)  # (B, 52)
-        imag_out = self.mlp_imag(imag_in)  # (B, 52)
-        
-        # Stack the outputs to get (B, 2, 52)
-        output = torch.stack((real_out, imag_out), dim=1)
+            real_out = self.mlp_real(real_in)  # (B, 52)
+            imag_out = self.mlp_imag(imag_in)  # (B, 52)
+            
+            # Stack the outputs to get (B, 2, 52)
+            output = torch.stack((real_out, imag_out), dim=1)
         
         return output
 
@@ -100,62 +119,86 @@ class ChannelNet(nn.Module):
 #Input Bx2x160, Output Bx1x1, Regression Task
 #TODO: Ask if we should use tanh or not. Tanh ouptut is in rnage -1,1
 class CFONetLarge(nn.Module):
-    def __init__(self, output_dim=1):
+    def __init__(self, output_dim=1, mtl=False, common_rep_dim=512):
         super(CFONetLarge, self).__init__()
-        self.features = nn.Sequential(
-            # Block 1
-            nn.Conv1d(2, 64, kernel_size=3), nn.ReLU(inplace=True),
-            nn.Conv1d(64, 128, kernel_size=5), nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=2, stride=2),
-            # Block 2
-            nn.Conv1d(128, 64, kernel_size=3), nn.ReLU(inplace=True),
-            nn.Conv1d(64, 128, kernel_size=5), nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=2, stride=2),
-            # Block 3
-            nn.Conv1d(128, 64, kernel_size=3), nn.ReLU(inplace=True),
-            nn.Conv1d(64, 128, kernel_size=5), nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=2, stride=2)
-        )
+        self.mtl = mtl
+        
+        if not self.mtl:
+            self.features = nn.Sequential(
+                # Block 1
+                nn.Conv1d(2, 64, kernel_size=3), nn.ReLU(inplace=True),
+                nn.Conv1d(64, 128, kernel_size=5), nn.ReLU(inplace=True),
+                nn.MaxPool1d(kernel_size=2, stride=2),
+                # Block 2
+                nn.Conv1d(128, 64, kernel_size=3), nn.ReLU(inplace=True),
+                nn.Conv1d(64, 128, kernel_size=5), nn.ReLU(inplace=True),
+                nn.MaxPool1d(kernel_size=2, stride=2),
+                # Block 3
+                nn.Conv1d(128, 64, kernel_size=3), nn.ReLU(inplace=True),
+                nn.Conv1d(64, 128, kernel_size=5), nn.ReLU(inplace=True),
+                nn.MaxPool1d(kernel_size=2, stride=2)
+            )
+            classifier_input_size = 128 * 14
+        else:
+            classifier_input_size = common_rep_dim
         
         self.classifier = nn.Sequential(
-            nn.Linear(128 * 14, 128), nn.ReLU(inplace=True),
+            nn.Linear(classifier_input_size, 128), nn.ReLU(inplace=True),
             nn.Linear(128, 128), nn.ReLU(inplace=True),
             nn.Linear(128, output_dim),
             #nn.Tanh()
         )
 
-    def forward(self, x):
-        x = self.features(x)
-        x = x.view(x.size(0), -1) # Flatten
-        x = self.classifier(x)
+    def forward(self, x, common_rep=None):
+        if self.mtl:
+            if common_rep is None:
+                raise ValueError("common_rep is required for MTL mode")
+            features = common_rep
+        else:
+            x = self.features(x)
+            features = x.view(x.size(0), -1) # Flatten
+        
+        x = self.classifier(features)
         return x.unsqueeze(-1)
 
 
 class CFONetSmall(nn.Module):
-    def __init__(self, output_dim=1):
+    def __init__(self, output_dim=1, mtl=False, common_rep_dim=512):
         super(CFONetSmall, self).__init__()
-        self.features = nn.Sequential(
-            # Block 1
-            nn.Conv1d(2, 64, kernel_size=3), nn.ReLU(inplace=True),
-            nn.Conv1d(64, 128, kernel_size=5), nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=2, stride=2),
-            # Block 2
-            nn.Conv1d(128, 64, kernel_size=3), nn.ReLU(inplace=True),
-            nn.Conv1d(64, 128, kernel_size=5), nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=2, stride=2)
-        )
+        self.mtl = mtl
+
+        if not self.mtl:
+            self.features = nn.Sequential(
+                # Block 1
+                nn.Conv1d(2, 64, kernel_size=3), nn.ReLU(inplace=True),
+                nn.Conv1d(64, 128, kernel_size=5), nn.ReLU(inplace=True),
+                nn.MaxPool1d(kernel_size=2, stride=2),
+                # Block 2
+                nn.Conv1d(128, 64, kernel_size=3), nn.ReLU(inplace=True),
+                nn.Conv1d(64, 128, kernel_size=5), nn.ReLU(inplace=True),
+                nn.MaxPool1d(kernel_size=2, stride=2)
+            )
+            classifier_input_size = 128 * 35
+        else:
+            classifier_input_size = common_rep_dim
         
         self.classifier = nn.Sequential(
-            nn.Linear(128 * 35, 128), nn.ReLU(inplace=True),
+            nn.Linear(classifier_input_size, 128), nn.ReLU(inplace=True),
             nn.Linear(128, 128), nn.ReLU(inplace=True),
             nn.Linear(128, output_dim),
             #nn.Tanh()
         )
 
-    def forward(self, x):
-        x = self.features(x)
-        x = x.view(x.size(0), -1) # Flatten
-        x = self.classifier(x)
+    def forward(self, x, common_rep=None):
+        if self.mtl:
+            if common_rep is None:
+                raise ValueError("common_rep is required for MTL mode")
+            features = common_rep
+        else:
+            x = self.features(x)
+            features = x.view(x.size(0), -1) # Flatten
+        
+        x = self.classifier(features)
         return x.unsqueeze(-1)
     
 
