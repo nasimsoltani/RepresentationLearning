@@ -1,12 +1,43 @@
 import glob
 import random
 import pickle
+from scipy.io import loadmat
 
-base_path = '/home/hofmann/Documents/projects/RepresentationLearning/dataset/OracleDatasetProcessed-arranged'
 portion_to_use = 0.5
+
+"""base_path = '/home/hofmann/Documents/projects/RepresentationLearning/dataset/OracleDatasetProcessed-arranged'
 rf_pkl_path = f'/home/hofmann/Documents/projects/RepresentationLearning/dataset/rf_partition_dict_{portion_to_use}.pkl'
 cfo_pkl_path = f'/home/hofmann/Documents/projects/RepresentationLearning/dataset/cfo_partition_dict_{portion_to_use}.pkl'
 channel_pkl_path = f'/home/hofmann/Documents/projects/RepresentationLearning/dataset/channel_partition_dict_{portion_to_use}.pkl'
+"""
+
+base_path = '/home/ns38942/RepresentationLearning/dataset'
+rf_pkl_path = '/home/ns38942/RepresentationLearning/pkl_files/dataset.pkl'
+
+
+def read_file(file_path):
+	""" gets a file_path for RF fingerprinting input part, and returns associated estimated CFO """
+
+	# file_path is the RFfingerprinting file path, read CFO files
+
+	file_path_list = file_path.split('/')
+	file_path_list.pop(0)
+	filename = file_path_list[-1]
+	file_path_list.pop()
+
+	suffix_filename = filename.lstrip('RFfingerprinting')
+
+	# for CFO filepath
+	new_filename = '/CFOEstimation'+suffix_filename
+	new_filepath = ''
+	for element in file_path_list:
+		new_filepath +='/'+ element
+	new_filepath += new_filename
+	content = loadmat(new_filepath)
+	CFO_output = content['CFO'][0,0]
+
+
+	return CFO_output
 
 # create Radio list
 radio_list = list(range(0,16))
@@ -15,7 +46,7 @@ radio_list = list(map(lambda x: 'Radio'+str(x), radio_list))
 print(radio_list)
 
 # create distance list
-distance_list = list(range(2,62,6))
+distance_list = list(range(2,64,6))
 distance_list = list(map(lambda x: str(x)+'ft', distance_list))
 
 print(distance_list)
@@ -83,8 +114,24 @@ channel_partition_dict = {'train': Channel_train_list, 'val': Channel_val_list, 
 with open (rf_pkl_path, 'wb') as handle:
 	pickle.dump(rf_partition_dict, handle)
 
-with open (cfo_pkl_path, 'wb') as handle:
+"""with open (cfo_pkl_path, 'wb') as handle:
 	pickle.dump(cfo_partition_dict, handle)
 
 with open (channel_pkl_path, 'wb') as handle:
 	pickle.dump(channel_partition_dict, handle)
+"""
+
+with open (rf_pkl_path, 'rb') as handle:
+	partitions = pickle.load(handle)
+
+max_cfo = 0
+train_list = partitions['train']
+for file_path in train_list:
+	output_cfo = read_file(file_path)
+	max_cfo = max(max_cfo , abs(output_cfo))
+	
+partitions['max_cfo'] = max_cfo
+with open (rf_pkl_path, 'wb') as handle:
+	pickle.dump(partitions,handle)
+
+
