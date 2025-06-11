@@ -6,3 +6,4 @@ mat_dataset/
 .venv/
 results/
 wandb/
+.env

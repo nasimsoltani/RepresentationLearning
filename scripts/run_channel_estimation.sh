@@ -3,13 +3,25 @@
 # This script runs the training for the Channel Estimation task.
 # IMPORTANT: You must specify the path to your dataset pickle file below.
 
-python code/rep_lr/main.py \
+# python code/rep_lr/main.py \
+#     --task channel_estimation \
+#     --pkl_dataset_path "/path/to/your/dataset.pkl" \
+#     --epochs 300 \
+#     --batch_size 256 \
+#     --lr 1e-4 \
+#     --gpu_id 0 \
+#     --save_epochs 10 \
+#     --patience 20
+#     # --resume_from "/path/to/your/checkpoint.pt" # Optional: uncomment to resume training 
+
+
+uv run python /home/hofmann/Documents/projects/RepresentationLearning/code/rep_lr/main.py \
     --task channel_estimation \
-    --pkl_dataset_path "/path/to/your/dataset.pkl" \
-    --epochs 300 \
-    --batch_size 256 \
-    --lr 1e-4 \
+    --pkl_dataset_path "/home/hofmann/Documents/projects/RepresentationLearning/dataset/rf_partition_dict_0.5.pkl" \
+    --epochs 200 \
+    --batch_size 32 \
+    --lr 1e-3 \
     --gpu_id 0 \
-    --save_epochs 10 \
+    --save_epochs 40 \
     --patience 20
     # --resume_from "/path/to/your/checkpoint.pt" # Optional: uncomment to resume training 

@@ -2,8 +2,14 @@ import glob
 import random
 import pickle
 from scipy.io import loadmat
+from dotenv import load_dotenv
+import os
 
-portion_to_use = 0.5
+# Load environment variables
+load_dotenv()
+
+# Get portion_to_use from environment variable, default to 0.5 if not set
+portion_to_use = float(os.getenv('PORTION_TO_USE', '0.5'))
 
 """base_path = '/home/hofmann/Documents/projects/RepresentationLearning/dataset/OracleDatasetProcessed-arranged'
 rf_pkl_path = f'/home/hofmann/Documents/projects/RepresentationLearning/dataset/rf_partition_dict_{portion_to_use}.pkl'
@@ -11,9 +17,15 @@ cfo_pkl_path = f'/home/hofmann/Documents/projects/RepresentationLearning/dataset
 channel_pkl_path = f'/home/hofmann/Documents/projects/RepresentationLearning/dataset/channel_partition_dict_{portion_to_use}.pkl'
 """
 
-base_path = '/home/ns38942/RepresentationLearning/dataset'
-rf_pkl_path = '/home/ns38942/RepresentationLearning/pkl_files/dataset.pkl'
+base_path = os.getenv('DATA_BASE_PATH')
+if not base_path:
+    raise ValueError("Missing DATA_BASE_PATH environment variable. Please check your .env file.")
 
+# Construct paths using os.path.join
+dataset_dir = os.path.dirname(base_path)  # Get parent directory of base_path
+rf_pkl_path = os.path.join(dataset_dir, f'rf_partition_dict_{portion_to_use}.pkl')
+cfo_pkl_path = os.path.join(dataset_dir, f'cfo_partition_dict_{portion_to_use}.pkl')
+channel_pkl_path = os.path.join(dataset_dir, f'channel_partition_dict_{portion_to_use}.pkl')
 
 def read_file(file_path):
 	""" gets a file_path for RF fingerprinting input part, and returns associated estimated CFO """

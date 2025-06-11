@@ -6,13 +6,15 @@ import numpy as np
 import glob
 import random
 import argparse
+import json
 
 import torch
 import torch.nn as nn
 import torch.optim
 from torch.utils.data import Dataset, DataLoader, random_split
 from py_datasets import TrainDataset
-from models import RFFingerprintingNet, ChannelNet, CFONetLarge, CFONetSmall
+from models import (LightProjectionLayer, ProjectionLayerMLP, Encoder, 
+                   RFClassificationHead, ChannelEstimationHead, CFOEstimationHead)
 
 import warnings
 import wandb
@@ -26,9 +28,9 @@ def main():
     parser = argparse.ArgumentParser(description='Train and validation pipeline', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     
     # Task and data arguments
-    parser.add_argument('--task', type=str, required=True, 
-                        choices=['rf_fingerprinting', 'channel_estimation', 'cfo_estimation_small', 'cfo_estimation_large'], 
-                        help='Task to train.')
+    parser.add_argument('--task', type=str, required=True, nargs='+',
+                        choices=['rf_fingerprinting', 'channel_estimation', 'cfo_estimation'],
+                        help='Task(s) to train. For MTL, provide multiple tasks.')
     parser.add_argument('--pkl_dataset_path', type=str, required=True, 
                         help='Path to the pkl dataset file.')
     
@@ -36,8 +38,29 @@ def main():
     parser.add_argument('--epochs', type=int, default=300, help='Number of training epochs.')
     parser.add_argument('--batch_size', type=int, default=256, help='Batch size.')
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate.')
-    parser.add_argument('--slice_len', type=int, default=1024, help='NN input size for RF fingerprinting NN.')
-    parser.add_argument('--num_classes', type=int, default=16, help='Number of classes for RF fingerprinting.')
+    parser.add_argument('--slice_len', type=int, default=1024, help='NN input size. 1024 for RF, 160 for CFO/Channel.')
+
+    # Architecture parameters
+    parser.add_argument('--projection_type', type=str, default='light', choices=['light', 'mlp'],
+                        help='Type of projection layer to use.')
+    parser.add_argument('--proj_channels', type=int, default=4,
+                        help='Number of channels in projection layer.')
+    parser.add_argument('--d1', type=int, default=512, 
+                        help='Output dimension of projection layer.')
+    parser.add_argument('--d2', type=int, default=256, 
+                        help='Output dimension of encoder.')
+    parser.add_argument('--encoder_hidden_dims', type=str, default='512,384',
+                        help='Comma-separated list of hidden dimensions for encoder.')
+    parser.add_argument('--dropout', type=float, default=0.1,
+                        help='Dropout probability for all layers.')
+    parser.add_argument('--head_hidden_dim', type=int, default=256,
+                        help='Hidden dimension for task head.')
+    
+    # MTL arguments
+    parser.add_argument('--mtl', action='store_true', help='Enable Multi-Task Learning.')
+    parser.add_argument('--w_rf', type=float, default=1.0, help='Weight for RF fingerprinting loss.')
+    parser.add_argument('--w_channel', type=float, default=1.0, help='Weight for channel estimation loss.')
+    parser.add_argument('--w_cfo', type=float, default=1.0, help='Weight for CFO estimation loss.')
 
     # System and logging
     parser.add_argument('--gpu_id', default=0, type=int, help='ID of GPU to be used.')
@@ -50,11 +73,25 @@ def main():
 
     args = parser.parse_args()
 
+    if not args.mtl and len(args.task) > 1:
+        raise ValueError("Multiple tasks specified without --mtl flag. Use --mtl for multi-task learning.")
+    if not args.mtl:
+        # For backward compatibility and simplicity in single-task mode
+        args.task = args.task[0]
+
+    # Parse encoder hidden dimensions
+    args.encoder_hidden_dims = [int(dim) for dim in args.encoder_hidden_dims.split(',')]
+
     # Create a unique directory for this run
-    run_name = f"{args.task}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    run_name = f"{'_'.join(args.task) if args.mtl else args.task}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     args.save_path = os.path.join(args.save_path, run_name)
     os.makedirs(args.save_path, exist_ok=True)
     print(f"Results will be saved to: {args.save_path}")
+
+    # Save args to a JSON file
+    args_dict = vars(args)
+    with open(os.path.join(args.save_path, 'args.json'), 'w') as f:
+        json.dump(args_dict, f, indent=4)
 
     # Initial configurations
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -62,7 +99,7 @@ def main():
     device = torch.device(f'cuda:{args.gpu_id}' if torch.cuda.is_available() else 'cpu')
 
     # Initialize wandb
-    wandb.init(project=args.wandb_project, entity=args.wandb_entity, config=args, name=run_name)
+    wandb.init(project=args.wandb_project, config=args, name=run_name)
 
     # Create ID class dict 
     ID_class_dict = {}
@@ -70,6 +107,7 @@ def main():
         this_key = 'Radio'+str(i)
         ID_class_dict[this_key] = i
     print(ID_class_dict)
+    num_classes = len(list(ID_class_dict.keys()))
 
     # Load data from pickle file
     with open(args.pkl_dataset_path, 'rb') as handle:
@@ -77,37 +115,162 @@ def main():
 
     train_list = content['train']
     val_list = content['val']
+    max_cfo = content['max_cfo']
 
     dataset_args = argparse.Namespace(slice_len=args.slice_len)
-    train_dataset = TrainDataset(train_list, ID_class_dict, dataset_args)
-    val_dataset = TrainDataset(val_list, ID_class_dict, dataset_args)
+    train_dataset = TrainDataset(train_list, ID_class_dict, dataset_args, max_cfo)
+    val_dataset = TrainDataset(val_list, ID_class_dict, dataset_args, max_cfo)
 
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
     val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, pin_memory=True)
 
-    # Model and loss function selection
-    if args.task == 'rf_fingerprinting':
-        model = RFFingerprintingNet(slice_size=args.slice_len, num_classes=args.num_classes)
-        loss_fn = nn.CrossEntropyLoss()
-    elif args.task == 'channel_estimation':
-        model = ChannelNet()
-        loss_fn = nn.MSELoss()
-    elif args.task == 'cfo_estimation_small':
-        model = CFONetSmall()
-        loss_fn = nn.MSELoss()
-    elif args.task == 'cfo_estimation_large':
-        model = CFONetLarge()
-        loss_fn = nn.MSELoss()
-    else:
-        raise ValueError(f"Unknown task: {args.task}")
+    # Create model, loss function, and optimizer
+    model = None
+    loss_fn = None
 
+    def count_parameters(m):
+        return sum(p.numel() for p in m.parameters() if p.requires_grad)
+
+    if args.mtl:
+        # Multi-Task Learning Setup
+        print("Setting up Multi-Task Learning model for tasks:", args.task)
+        
+        projections = nn.ModuleDict()
+        heads = nn.ModuleDict()
+        loss_fns = {}
+        
+        for task in args.task:
+            if task == 'rf_fingerprinting':
+                seq_len = args.slice_len
+                if args.projection_type == 'light':
+                    projections[task] = LightProjectionLayer(in_channels=2, out_channels=args.proj_channels, output_dim=args.d1)
+                else:
+                    projections[task] = ProjectionLayerMLP(in_channels=2, out_channels=args.proj_channels, seq_length=seq_len, output_dim=args.d1)
+                heads[task] = RFClassificationHead(input_dim=args.d2, num_classes=num_classes, hidden_dim=args.head_hidden_dim, dropout=args.dropout)
+                loss_fns[task] = nn.CrossEntropyLoss()
+
+            elif task == 'channel_estimation':
+                seq_len = 160
+                if args.projection_type == 'light':
+                    projections[task] = LightProjectionLayer(in_channels=2, out_channels=args.proj_channels, output_dim=args.d1)
+                else:
+                    projections[task] = ProjectionLayerMLP(in_channels=2, out_channels=args.proj_channels, seq_length=seq_len, output_dim=args.d1)
+                heads[task] = ChannelEstimationHead(input_dim=args.d2, hidden_dim=args.head_hidden_dim, output_length=52, dropout=args.dropout)
+                mse_loss = nn.MSELoss()
+                def complex_mse_loss(pred, target):
+                    pred_flat = pred.view(pred.size(0), -1)
+                    target_flat = target.view(target.size(0), -1)
+                    return mse_loss(pred_flat, target_flat)
+                loss_fns[task] = complex_mse_loss
+
+            elif task == 'cfo_estimation':
+                seq_len = 160
+                if args.projection_type == 'light':
+                    projections[task] = LightProjectionLayer(in_channels=2, out_channels=args.proj_channels, output_dim=args.d1)
+                else:
+                    projections[task] = ProjectionLayerMLP(in_channels=2, out_channels=args.proj_channels, seq_length=seq_len, output_dim=args.d1)
+                heads[task] = CFOEstimationHead(input_dim=args.d2, hidden_dim=args.head_hidden_dim, dropout=args.dropout)
+                loss_fns[task] = nn.MSELoss()
+
+        encoder = Encoder(input_dim=args.d1, hidden_dims=args.encoder_hidden_dims, output_dim=args.d2, dropout=args.dropout)
+        
+        model = nn.ModuleDict({
+            'projections': projections,
+            'encoder': encoder,
+            'heads': heads
+        })
+        loss_fn = loss_fns
+
+        # Print model parameters
+        print("\nModel Architecture Details (MTL):")
+        for task_name, proj in projections.items():
+            print(f"Projection Parameters ({task_name}): {count_parameters(proj):,}")
+        print(f"Encoder Parameters: {count_parameters(encoder):,}")
+        for task_name, head in heads.items():
+            print(f"Task Head Parameters ({task_name}): {count_parameters(head):,}")
+        print(f"Total Parameters: {count_parameters(model):,}")
+
+    else:
+        # Single-Task Learning Setup
+        print(f"Setting up Single-Task Learning model for {args.task}.")
+        # Create projection layer
+        seq_len = args.slice_len if args.task == 'rf_fingerprinting' else 160
+        
+        if args.projection_type == 'light':
+            projection = LightProjectionLayer(in_channels=2, out_channels=args.proj_channels, output_dim=args.d1)
+        else:
+            projection = ProjectionLayerMLP(in_channels=2, out_channels=args.proj_channels, seq_length=seq_len, output_dim=args.d1)
+        
+        # Create encoder (common for all tasks)
+        encoder = Encoder(input_dim=args.d1, hidden_dims=args.encoder_hidden_dims, output_dim=args.d2, dropout=args.dropout)
+
+        # Task-specific head and loss function
+        if args.task == 'rf_fingerprinting':
+            task_head = RFClassificationHead(
+                input_dim=args.d2, 
+                num_classes=num_classes, 
+                hidden_dim=args.head_hidden_dim, 
+                dropout=args.dropout
+            )
+            loss_fn = nn.CrossEntropyLoss()
+            
+        elif args.task == 'channel_estimation':
+            task_head = ChannelEstimationHead(
+                input_dim=args.d2,
+                hidden_dim=args.head_hidden_dim,
+                output_length=52,
+                dropout=args.dropout
+            )
+            mse_loss = nn.MSELoss()
+            def complex_mse_loss(pred, target):
+                pred_flat = pred.view(pred.size(0), -1)
+                target_flat = target.view(target.size(0), -1)
+                return mse_loss(pred_flat, target_flat)
+            loss_fn = complex_mse_loss
+            
+        elif args.task == 'cfo_estimation':
+            task_head = CFOEstimationHead(
+                input_dim=args.d2,
+                hidden_dim=args.head_hidden_dim,
+                dropout=args.dropout
+            )
+            loss_fn = nn.MSELoss()
+            
+        else:
+            raise ValueError(f"Unknown task: {args.task}")
+
+        model = nn.ModuleList([projection, encoder, task_head])
+        
+        total_params = count_parameters(projection) + count_parameters(encoder) + count_parameters(task_head)
+        print("\nModel Architecture Details:")
+        print(f"Projection Parameters: {count_parameters(projection):,}")
+        print(f"Encoder Parameters: {count_parameters(encoder):,}")
+        print(f"Task Head Parameters: {count_parameters(task_head):,}")
+        print(f"Total Parameters: {total_params:,}")
+
+    # The rest of the script remains largely the same, but checkpointing needs to be handled.
+    # We can remove the old complex memory calculation for now to simplify.
+    print("\nNote: Memory usage calculation has been simplified.\n")
+
+    # Move model to device
     model.to(device)
     
     # Load from checkpoint if provided
     if args.resume_from:
         if os.path.isfile(args.resume_from):
             print(f"Loading checkpoint '{args.resume_from}'")
-            model.load_state_dict(torch.load(args.resume_from, map_location=device))
+            checkpoint = torch.load(args.resume_from, map_location=device)
+            if args.mtl:
+                model['projections'].load_state_dict(checkpoint['projections_state_dict'])
+                model['encoder'].load_state_dict(checkpoint['encoder_state_dict'])
+                model['heads'].load_state_dict(checkpoint['heads_state_dict'])
+            else:
+                if 'model_state_dict' in checkpoint: # Handle old single-task checkpoints
+                    model.load_state_dict(checkpoint['model_state_dict'])
+                else: # Handle new single-task checkpoints (saved as ModuleList components)
+                    for i, module in enumerate(model):
+                        module.load_state_dict(checkpoint[f'module_{i}'])
+            print("Checkpoint loaded.")
         else:
             print(f"Checkpoint not found at '{args.resume_from}'. Training from scratch.")
 
@@ -124,7 +287,7 @@ if __name__ == '__main__':
 # print('length of train and val dl')
 # print(len(train_dl))
 # print(len(val_dl))
-# for RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y in train_dl:
+# for RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y, _ in train_dl:
 # 	print("Shapes from Dataloader batch:")
 # 	print(f"	RF_X shape: {RF_X.shape}")
 # 	print(f"	RF_y shape: {RF_y.shape}")

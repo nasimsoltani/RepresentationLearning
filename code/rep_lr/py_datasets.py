@@ -14,7 +14,7 @@ from torch.fft import fftshift as FFTshift
 import os
 from scipy.io import loadmat 
 
-def read_file(file_path):
+def read_file(file_path, max_cfo):
 	""" gets a file_path for RF fingerprinting input part, and return associated data parts
 	for CFO estimation and channel estimation too """
 
@@ -86,14 +86,17 @@ def read_file(file_path):
 
 
 class TrainDataset(Dataset):
-	def __init__(self, file_list, class_ids, args):
+	def __init__(self, file_list, class_ids, args, max_cfo, test_mode=False):
 
 		self.file_list = file_list
 		self.class_ids = class_ids
 		self.args = args
+		self.max_cfo = max_cfo
+		self.test_mode = test_mode
 		
 		# shuffle the file list
-		random.shuffle(self.file_list)
+		if not self.test_mode:
+			random.shuffle(self.file_list)
 
 	def __len__(self):
 		return len(self.file_list)
@@ -101,20 +104,36 @@ class TrainDataset(Dataset):
 	def __getitem__(self, index):
 
 		file_path = self.file_list[index]
-		[RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y]  = read_file(file_path)
+		[RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y]  = read_file(file_path, self.max_cfo)
 		
-		""" slice only the RF_X """
-		slice_index = random.randint(0, RF_X.shape[1] - self.args.slice_len)  # pick a random index from which a slice starts
-		RF_X = RF_X[:, slice_index:slice_index+self.args.slice_len]    # pick the slice with determined length and create X (input)
-		
+		if self.test_mode:
+			# In test mode, we create sliding window slices of RF_X for evaluation.
+			if RF_X.shape[1] >= self.args.slice_len:
+				# Use unfold for efficient slicing
+				RF_X = RF_X.unfold(1, self.args.slice_len, 1).permute(1, 0, 2)
+			else:
+				# Pad if the sequence is shorter than slice_len
+				padded_RF_X = torch.zeros((RF_X.shape[0], self.args.slice_len))
+				padded_RF_X[:, :RF_X.shape[1]] = RF_X
+				RF_X = padded_RF_X.unsqueeze(0)
+		else:
+			""" slice only the RF_X """
+			slice_index = random.randint(0, RF_X.shape[1] - self.args.slice_len)  # pick a random index from which a slice starts
+			RF_X = RF_X[:, slice_index:slice_index+self.args.slice_len]    # pick the slice with determined length and create X (input)
 
-		return RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y
+		#print(RF_X.shape, RF_y, CFO_y.shape, Channel_X.shape, Channel_y.shape)
+		
+		CFO_y = CFO_y/self.max_cfo
+
+		return RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y, file_path
+
+
 
 if __name__ == '__main__':
 
 	file_path = '/home/hofmann/Documents/projects/RepresentationLearning/dataset/OracleDatasetProcessed-arranged/RFfingerprinting_run1_Radio9_8ft_984.mat' 
 
-	[X1, y1, X2, y2, X3, y3] = read_file(file_path)
+	[X1, y1, X2, y2, X3, y3] = read_file(file_path, max_cfo=1.0)
 	print(X1.shape, y1, X2.shape, y2.shape, X3.shape, y3.shape)
 	print(y3)
 #torch.Size([2, 4000]) 9 torch.Size([2, 160]) torch.Size([1, 1]) torch.Size([2, 160]) torch.Size([2, 52])
