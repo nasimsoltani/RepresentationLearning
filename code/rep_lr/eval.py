@@ -15,27 +15,48 @@ from models import (LightProjectionLayer, ProjectionLayerMLP, Encoder,
 from py_datasets import TrainDataset
 from torch.utils.data import DataLoader
 
-def evaluate_rf_fingerprinting(model, test_dl, device, output_dir, class_names):
-    projection, encoder, task_head = model
+def evaluate_rf_fingerprinting(model, test_dl, device, output_dir, class_names, args):
+    is_mtl = getattr(args, 'mtl', False)
+    if not is_mtl:
+        projection, encoder, task_head = model
+
     y_true = []
     y_pred = []
     evaluation_results = []
 
     with torch.no_grad():
         for batch in tqdm(test_dl, desc="Evaluating"):
-            inputs, labels, _, _, _, _, file_paths = batch
-            inputs = inputs.squeeze(0).to(device) # Squeeze batch dim, move slices to device
+            inputs, labels, cfo_inputs_raw, _, channel_inputs_raw, _, file_paths = batch
             labels = labels.to(device)
 
-            # Get predictions for all slices
-            slice_outputs = []
+            # Pre-calculate projections from other tasks for MTL
+            projected_others = 0
+            if is_mtl:
+                task_data_map = {
+                    'cfo_estimation': cfo_inputs_raw,
+                    'channel_estimation': channel_inputs_raw
+                }
+                for task_name in args.task:
+                    if task_name != 'rf_fingerprinting':
+                        other_inputs = task_data_map[task_name].to(device).float()
+                        projected_others += model['projections'][task_name](other_inputs)
+
             # Process slices in mini-batches to avoid OOM
-            mini_batch_size = 128 
-            for i in range(0, inputs.size(0), mini_batch_size):
-                input_slices = inputs[i:i+mini_batch_size]
-                x = projection(input_slices)
-                x = encoder(x)
-                output = task_head(x)
+            rf_inputs_all_slices = inputs.squeeze(0).to(device)
+            slice_outputs = []
+            mini_batch_size = 128
+            for i in range(0, rf_inputs_all_slices.size(0), mini_batch_size):
+                input_slices = rf_inputs_all_slices[i:i+mini_batch_size]
+
+                if is_mtl:
+                    projected_rf = model['projections']['rf_fingerprinting'](input_slices)
+                    projected_sum = projected_rf + projected_others  # Broadcast
+                    encoded = model['encoder'](projected_sum)
+                    output = model['heads']['rf_fingerprinting'](encoded)
+                else:
+                    x = projection(input_slices)
+                    x = encoder(x)
+                    output = task_head(x)
                 slice_outputs.append(output)
             
             all_slice_outputs = torch.cat(slice_outputs)
@@ -85,23 +106,45 @@ def evaluate_rf_fingerprinting(model, test_dl, device, output_dir, class_names):
     print(f"\nConfusion matrix saved to {cm_path}")
     plt.close()
 
-def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo):
-    projection, encoder, task_head = model
+def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, args):
+    is_mtl = getattr(args, 'mtl', False)
+    if not is_mtl:
+        projection, encoder, task_head = model
+    
     y_true = []
     y_pred = []
     evaluation_results = []
     
     with torch.no_grad():
         for batch in tqdm(test_dl, desc="Evaluating CFO Estimation"):
-            # Data for CFO is at index 2 (CFO_X) and 3 (CFO_y)
-            _, _, inputs, labels, _, _, file_paths = batch
+            rf_inputs_raw, _, inputs, labels, channel_inputs_raw, _, file_paths = batch
             
             inputs = inputs.to(device).float()
             labels = labels.to(device).float()
-            
-            x = projection(inputs)
-            x = encoder(x)
-            outputs = task_head(x)
+
+            if is_mtl:
+                # Average RF projections and sum with others
+                projected_sum = 0
+                task_data_map = {
+                    'rf_fingerprinting': rf_inputs_raw,
+                    'cfo_estimation': inputs,
+                    'channel_estimation': channel_inputs_raw
+                }
+                for task_name in args.task:
+                    task_inputs = task_data_map[task_name].to(device).float()
+                    if task_name == 'rf_fingerprinting':
+                        # Average projections across all slices for a single representation
+                        proj = model['projections'][task_name](task_inputs.squeeze(0))
+                        projected_sum += proj.mean(dim=0, keepdim=True)
+                    else:
+                        projected_sum += model['projections'][task_name](task_inputs)
+                
+                encoded = model['encoder'](projected_sum)
+                outputs = model['heads']['cfo_estimation'](encoded)
+            else:
+                x = projection(inputs)
+                x = encoder(x)
+                outputs = task_head(x)
             
             true_val = labels.item()
             pred_val = outputs.item()
@@ -170,23 +213,44 @@ def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo):
     # print(f"Scatter plot saved to {plot_path}")
     # plt.close()
 
-def evaluate_channel_estimation(model, test_dl, device, output_dir):
-    projection, encoder, task_head = model
+def evaluate_channel_estimation(model, test_dl, device, output_dir, args):
+    is_mtl = getattr(args, 'mtl', False)
+    if not is_mtl:
+        projection, encoder, task_head = model
+    
     all_y_true = []
     all_y_pred = []
     evaluation_results = []
 
     with torch.no_grad():
         for batch in tqdm(test_dl, desc="Evaluating Channel Estimation"):
-            # Data for Channel is at index 4 (Channel_X) and 5 (Channel_y)
-            _, _, _, _, inputs, labels, file_paths = batch
+            rf_inputs_raw, _, cfo_inputs_raw, _, inputs, labels, file_paths = batch
 
             inputs = inputs.to(device).float()
-            labels = labels.to(device) # Shape: (B, 2, 52)
+            labels = labels.to(device)
 
-            x = projection(inputs)
-            x = encoder(x)
-            outputs = task_head(x) # Shape: (B, 2, 52)
+            if is_mtl:
+                # Average RF projections and sum with others
+                projected_sum = 0
+                task_data_map = {
+                    'rf_fingerprinting': rf_inputs_raw,
+                    'cfo_estimation': cfo_inputs_raw,
+                    'channel_estimation': inputs
+                }
+                for task_name in args.task:
+                    task_inputs = task_data_map[task_name].to(device).float()
+                    if task_name == 'rf_fingerprinting':
+                        proj = model['projections'][task_name](task_inputs.squeeze(0))
+                        projected_sum += proj.mean(dim=0, keepdim=True)
+                    else:
+                        projected_sum += model['projections'][task_name](task_inputs)
+
+                encoded = model['encoder'](projected_sum)
+                outputs = model['heads']['channel_estimation'](encoded)
+            else:
+                x = projection(inputs)
+                x = encoder(x)
+                outputs = task_head(x)
 
             true_val = labels.cpu().numpy()[0]
             pred_val = outputs.cpu().numpy()[0]
@@ -321,7 +385,6 @@ def evaluate_channel_estimation(model, test_dl, device, output_dir):
 def main():
     parser = argparse.ArgumentParser(description='Evaluation script for representation learning models.')
     parser.add_argument('--model_path', type=str, required=True, help='Path to the trained model checkpoint (.pt file).')
-    parser.add_argument('--task', type=str, required=True, choices=['rf_fingerprinting', 'channel_estimation', 'cfo_estimation'], help='Task to evaluate.')
     parser.add_argument('--gpu_id', default=0, type=int, help='ID of GPU to be used.')
     parser.add_argument('--test_fraction', type=float, default=1.0, help='Fraction of the test set to use for evaluation.')
     cli_args = parser.parse_args()
@@ -331,24 +394,30 @@ def main():
 
     # Load args from the saved json file
     args_path = os.path.join(model_dir, 'args.json')
+    if not os.path.exists(args_path):
+        raise FileNotFoundError(f"args.json not found in {model_dir}. Cannot determine model architecture.")
     with open(args_path, 'r') as f:
-        args = argparse.Namespace(**json.load(f))
+        train_args = argparse.Namespace(**json.load(f))
+    
+    # Override training args with evaluation-specific args from CLI
+    train_args.gpu_id = cli_args.gpu_id
+    train_args.test_fraction = cli_args.test_fraction
 
     # Set device
-    device = torch.device(f'cuda:{cli_args.gpu_id}' if torch.cuda.is_available() else 'cpu')
+    device = torch.device(f'cuda:{train_args.gpu_id}' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
     # Load test data
-    with open(args.pkl_dataset_path, 'rb') as handle:
+    with open(train_args.pkl_dataset_path, 'rb') as handle:
         content = pickle.load(handle)
     test_list = content['test']
     max_cfo = content['max_cfo']
     
     # Shuffle and subset the test set
     random.shuffle(test_list)
-    num_test_samples = int(len(test_list) * cli_args.test_fraction)
+    num_test_samples = int(len(test_list) * train_args.test_fraction)
     test_list = test_list[:num_test_samples]
-    print(f"Using {num_test_samples} samples from the test set ({cli_args.test_fraction*100:.2f}%).")
+    print(f"Using {num_test_samples} samples from the test set ({train_args.test_fraction*100:.2f}%).")
     
     # Create ID class dict 
     ID_class_dict = {}
@@ -357,62 +426,120 @@ def main():
         ID_class_dict[this_key] = i
     num_classes = len(list(ID_class_dict.keys()))
 
-    test_dataset = TrainDataset(test_list, ID_class_dict, args, max_cfo, test_mode=True)
+    test_dataset = TrainDataset(test_list, ID_class_dict, train_args, max_cfo, test_mode=True)
     # Use batch_size=1 for test loader because of variable number of slices
     test_dl = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
 
     # Re-create model architecture
-    seq_len = args.slice_len if args.task == 'rf_fingerprinting' else 160
-    if args.projection_type == 'light':
-        projection = LightProjectionLayer(in_channels=2, out_channels=args.proj_channels, output_dim=args.d1)
-    else:
-        projection = ProjectionLayerMLP(in_channels=2, out_channels=args.proj_channels, seq_length=seq_len, output_dim=args.d1)
-    
-    encoder = Encoder(input_dim=args.d1, hidden_dims=args.encoder_hidden_dims, output_dim=args.d2, dropout=args.dropout)
+    is_mtl = getattr(train_args, 'mtl', False)
 
-    if cli_args.task == 'rf_fingerprinting':
-        task_head = RFClassificationHead(input_dim=args.d2, num_classes=num_classes, hidden_dim=args.head_hidden_dim, dropout=args.dropout)
-    elif cli_args.task == 'channel_estimation':
-        task_head = ChannelEstimationHead(input_dim=args.d2, hidden_dim=args.head_hidden_dim, output_length=52, dropout=args.dropout)
-    elif cli_args.task == 'cfo_estimation':
-        task_head = CFOEstimationHead(input_dim=args.d2, hidden_dim=args.head_hidden_dim, dropout=args.dropout)
-    else:
-        raise ValueError(f"Unknown task: {cli_args.task}")
+    if is_mtl:
+        print("Reconstructing MTL model architecture.")
+        projections = torch.nn.ModuleDict()
+        heads = torch.nn.ModuleDict()
 
-    model = torch.nn.ModuleList([projection, encoder, task_head])
-    for module in model:
-        module.to(device)
+        for task in train_args.task:
+            if task == 'rf_fingerprinting':
+                seq_len = train_args.slice_len
+                proj_layer = ProjectionLayerMLP if train_args.projection_type == 'mlp' else LightProjectionLayer
+                projections[task] = proj_layer(in_channels=2, out_channels=train_args.proj_channels, **({'seq_length': seq_len} if train_args.projection_type == 'mlp' else {}), output_dim=train_args.d1)
+                heads[task] = RFClassificationHead(input_dim=train_args.d2, num_classes=num_classes, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
+            
+            elif task == 'channel_estimation':
+                seq_len = 160
+                proj_layer = ProjectionLayerMLP if train_args.projection_type == 'mlp' else LightProjectionLayer
+                projections[task] = proj_layer(in_channels=2, out_channels=train_args.proj_channels, **({'seq_length': seq_len} if train_args.projection_type == 'mlp' else {}), output_dim=train_args.d1)
+                heads[task] = ChannelEstimationHead(input_dim=train_args.d2, hidden_dim=train_args.head_hidden_dim, output_length=52, dropout=train_args.dropout)
+
+            elif task == 'cfo_estimation':
+                seq_len = 160
+                proj_layer = ProjectionLayerMLP if train_args.projection_type == 'mlp' else LightProjectionLayer
+                projections[task] = proj_layer(in_channels=2, out_channels=train_args.proj_channels, **({'seq_length': seq_len} if train_args.projection_type == 'mlp' else {}), output_dim=train_args.d1)
+                heads[task] = CFOEstimationHead(input_dim=train_args.d2, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
+
+        encoder = Encoder(input_dim=train_args.d1, hidden_dims=train_args.encoder_hidden_dims, output_dim=train_args.d2, dropout=train_args.dropout)
+        
+        model = torch.nn.ModuleDict({
+            'projections': projections,
+            'encoder': encoder,
+            'heads': heads
+        })
+    else:
+        print("Reconstructing single-task model architecture.")
+        task_name = train_args.task
+        seq_len = train_args.slice_len if task_name == 'rf_fingerprinting' else 160
+        if train_args.projection_type == 'light':
+            projection = LightProjectionLayer(in_channels=2, out_channels=train_args.proj_channels, output_dim=train_args.d1)
+        else:
+            projection = ProjectionLayerMLP(in_channels=2, out_channels=train_args.proj_channels, seq_length=seq_len, output_dim=train_args.d1)
+        
+        encoder = Encoder(input_dim=train_args.d1, hidden_dims=train_args.encoder_hidden_dims, output_dim=train_args.d2, dropout=train_args.dropout)
+
+        if task_name == 'rf_fingerprinting':
+            task_head = RFClassificationHead(input_dim=train_args.d2, num_classes=num_classes, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
+        elif task_name == 'channel_estimation':
+            task_head = ChannelEstimationHead(input_dim=train_args.d2, hidden_dim=train_args.head_hidden_dim, output_length=52, dropout=train_args.dropout)
+        elif task_name == 'cfo_estimation':
+            task_head = CFOEstimationHead(input_dim=train_args.d2, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
+        else:
+            raise ValueError(f"Unknown task: {task_name}")
+
+        model = torch.nn.ModuleList([projection, encoder, task_head])
+
+    model.to(device)
 
     # Load trained weights
+    print(f"Loading weights from {cli_args.model_path}")
     checkpoint = torch.load(cli_args.model_path, map_location=device)
-    for i, module in enumerate(model):
-        module.load_state_dict(checkpoint[f'module_{i}'])
     
-    for module in model:
-        module.eval()
+    if is_mtl:
+        model['projections'].load_state_dict(checkpoint['projections_state_dict'])
+        model['encoder'].load_state_dict(checkpoint['encoder_state_dict'])
+        model['heads'].load_state_dict(checkpoint['heads_state_dict'])
+    else:
+        if 'module_0' in checkpoint:
+            for i, module in enumerate(model):
+                module.load_state_dict(checkpoint[f'module_{i}'])
+        elif 'model_state_dict' in checkpoint: # Legacy format
+            model.load_state_dict(checkpoint['model_state_dict'])
+        else:
+            raise KeyError("Could not find model weights in a recognized format in the checkpoint.")
 
+    model.eval()
     print("Model loaded successfully.")
+    
+    # Determine tasks to evaluate
+    tasks_to_evaluate = train_args.task if is_mtl else [train_args.task]
+    print(f"Found tasks: {tasks_to_evaluate}. Running evaluation for each.")
 
-    # Task head validation
-    task_head = model[2]
-    task_valid = False
-    if cli_args.task == 'rf_fingerprinting' and isinstance(task_head, RFClassificationHead):
-        task_valid = True
-    elif cli_args.task == 'cfo_estimation' and isinstance(task_head, CFOEstimationHead):
-        task_valid = True
-    elif cli_args.task == 'channel_estimation' and isinstance(task_head, ChannelEstimationHead):
-        task_valid = True
+    # Evaluation loop for all relevant tasks
+    for task in tasks_to_evaluate:
+        print(f"\n===== Evaluating Task: {task} =====")
 
-    if not task_valid:
-        raise ValueError(f"Mismatched task and model head. Task: {cli_args.task}, Head: {type(task_head).__name__}")
+        # Task head validation
+        if is_mtl:
+            task_head = model['heads'][task]
+        else:
+            task_head = model[2]
 
-    # Evaluation loop
-    if cli_args.task == 'rf_fingerprinting':
-        evaluate_rf_fingerprinting(model, test_dl, device, model_dir, list(ID_class_dict.keys()))
-    elif cli_args.task == 'cfo_estimation':
-        evaluate_cfo_estimation(model, test_dl, device, model_dir, max_cfo)
-    elif cli_args.task == 'channel_estimation':
-        evaluate_channel_estimation(model, test_dl, device, model_dir)
+        task_valid = False
+        if task == 'rf_fingerprinting' and isinstance(task_head, RFClassificationHead):
+            task_valid = True
+        elif task == 'cfo_estimation' and isinstance(task_head, CFOEstimationHead):
+            task_valid = True
+        elif task == 'channel_estimation' and isinstance(task_head, ChannelEstimationHead):
+            task_valid = True
+
+        if not task_valid:
+            print(f"Warning: Mismatched model head for task '{task}'. Head is {type(task_head).__name__}. Skipping.")
+            continue
+
+        if task == 'rf_fingerprinting':
+            evaluate_rf_fingerprinting(model, test_dl, device, model_dir, list(ID_class_dict.keys()), train_args)
+        elif task == 'cfo_estimation':
+            evaluate_cfo_estimation(model, test_dl, device, model_dir, max_cfo, train_args)
+        elif task == 'channel_estimation':
+            evaluate_channel_estimation(model, test_dl, device, model_dir, train_args)
 
 if __name__ == '__main__':
     main() 
