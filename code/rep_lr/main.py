@@ -13,7 +13,7 @@ import torch.nn as nn
 import torch.optim
 from torch.utils.data import Dataset, DataLoader, random_split
 from py_datasets import TrainDataset
-from models import (LightProjectionLayer, ProjectionLayerMLP, Encoder, 
+from models import (ComplexSequenceProjector, Encoder, 
                    RFClassificationHead, ChannelEstimationHead, CFOEstimationHead)
 
 import warnings
@@ -37,20 +37,16 @@ def main():
     # Training hyperparameters
     parser.add_argument('--epochs', type=int, default=300, help='Number of training epochs.')
     parser.add_argument('--batch_size', type=int, default=256, help='Batch size.')
-    parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate.')
+    parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate.')
     parser.add_argument('--slice_len', type=int, default=1024, help='NN input size. 1024 for RF, 160 for CFO/Channel.')
 
     # Architecture parameters
-    parser.add_argument('--projection_type', type=str, default='light', choices=['light', 'mlp'],
-                        help='Type of projection layer to use.')
-    parser.add_argument('--proj_channels', type=int, default=4,
-                        help='Number of channels in projection layer.')
-    parser.add_argument('--d1', type=int, default=512, 
-                        help='Output dimension of projection layer.')
-    parser.add_argument('--d2', type=int, default=256, 
+    parser.add_argument('--proj_seq_len', type=int, default=256,
+                        help='Common sequence length after projection.')
+    parser.add_argument('--proj_hidden_dim', type=int, default=512,
+                        help='Hidden dimension for projection layer MLP.')
+    parser.add_argument('--d2', type=int, default=128, 
                         help='Output dimension of encoder.')
-    parser.add_argument('--encoder_hidden_dims', type=str, default='512,384',
-                        help='Comma-separated list of hidden dimensions for encoder.')
     parser.add_argument('--dropout', type=float, default=0.1,
                         help='Dropout probability for all layers.')
     parser.add_argument('--head_hidden_dim', type=int, default=256,
@@ -78,9 +74,6 @@ def main():
     if not args.mtl:
         # For backward compatibility and simplicity in single-task mode
         args.task = args.task[0]
-
-    # Parse encoder hidden dimensions
-    args.encoder_hidden_dims = [int(dim) for dim in args.encoder_hidden_dims.split(',')]
 
     # Create a unique directory for this run
     run_name = f"{'_'.join(args.task) if args.mtl else args.task}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -142,20 +135,14 @@ def main():
         for task in args.task:
             if task == 'rf_fingerprinting':
                 seq_len = args.slice_len
-                if args.projection_type == 'light':
-                    projections[task] = LightProjectionLayer(in_channels=2, out_channels=args.proj_channels, output_dim=args.d1)
-                else:
-                    projections[task] = ProjectionLayerMLP(in_channels=2, out_channels=args.proj_channels, seq_length=seq_len, output_dim=args.d1)
-                heads[task] = RFClassificationHead(input_dim=args.d2, num_classes=num_classes, hidden_dim=args.head_hidden_dim, dropout=args.dropout)
+                projections[task] = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=args.proj_seq_len, hidden_dim=args.proj_hidden_dim)
+                heads[task] = RFClassificationHead(input_dim=2*args.d2, num_classes=num_classes, hidden_dim=args.head_hidden_dim, dropout=args.dropout)
                 loss_fns[task] = nn.CrossEntropyLoss()
 
             elif task == 'channel_estimation':
                 seq_len = 160
-                if args.projection_type == 'light':
-                    projections[task] = LightProjectionLayer(in_channels=2, out_channels=args.proj_channels, output_dim=args.d1)
-                else:
-                    projections[task] = ProjectionLayerMLP(in_channels=2, out_channels=args.proj_channels, seq_length=seq_len, output_dim=args.d1)
-                heads[task] = ChannelEstimationHead(input_dim=args.d2, hidden_dim=args.head_hidden_dim, output_length=52, dropout=args.dropout)
+                projections[task] = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=args.proj_seq_len, hidden_dim=args.proj_hidden_dim)
+                heads[task] = ChannelEstimationHead(input_dim=2*args.d2, hidden_dim=args.head_hidden_dim, output_length=52, dropout=args.dropout)
                 mse_loss = nn.MSELoss()
                 def complex_mse_loss(pred, target):
                     pred_flat = pred.view(pred.size(0), -1)
@@ -165,14 +152,11 @@ def main():
 
             elif task == 'cfo_estimation':
                 seq_len = 160
-                if args.projection_type == 'light':
-                    projections[task] = LightProjectionLayer(in_channels=2, out_channels=args.proj_channels, output_dim=args.d1)
-                else:
-                    projections[task] = ProjectionLayerMLP(in_channels=2, out_channels=args.proj_channels, seq_length=seq_len, output_dim=args.d1)
-                heads[task] = CFOEstimationHead(input_dim=args.d2, hidden_dim=args.head_hidden_dim, dropout=args.dropout)
+                projections[task] = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=args.proj_seq_len, hidden_dim=args.proj_hidden_dim)
+                heads[task] = CFOEstimationHead(input_dim=2*args.d2, hidden_dim=args.head_hidden_dim, dropout=args.dropout)
                 loss_fns[task] = nn.MSELoss()
 
-        encoder = Encoder(input_dim=args.d1, hidden_dims=args.encoder_hidden_dims, output_dim=args.d2, dropout=args.dropout)
+        encoder = Encoder(slice_size=args.proj_seq_len, output_dim=args.d2, dropout=args.dropout)
         
         model = nn.ModuleDict({
             'projections': projections,
@@ -196,18 +180,15 @@ def main():
         # Create projection layer
         seq_len = args.slice_len if args.task == 'rf_fingerprinting' else 160
         
-        if args.projection_type == 'light':
-            projection = LightProjectionLayer(in_channels=2, out_channels=args.proj_channels, output_dim=args.d1)
-        else:
-            projection = ProjectionLayerMLP(in_channels=2, out_channels=args.proj_channels, seq_length=seq_len, output_dim=args.d1)
+        projection = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=args.proj_seq_len, hidden_dim=args.proj_hidden_dim)
         
         # Create encoder (common for all tasks)
-        encoder = Encoder(input_dim=args.d1, hidden_dims=args.encoder_hidden_dims, output_dim=args.d2, dropout=args.dropout)
+        encoder = Encoder(slice_size=args.proj_seq_len, output_dim=args.d2, dropout=args.dropout)
 
         # Task-specific head and loss function
         if args.task == 'rf_fingerprinting':
             task_head = RFClassificationHead(
-                input_dim=args.d2, 
+                input_dim=2*args.d2, 
                 num_classes=num_classes, 
                 hidden_dim=args.head_hidden_dim, 
                 dropout=args.dropout
@@ -216,7 +197,7 @@ def main():
             
         elif args.task == 'channel_estimation':
             task_head = ChannelEstimationHead(
-                input_dim=args.d2,
+                input_dim=2*args.d2,
                 hidden_dim=args.head_hidden_dim,
                 output_length=52,
                 dropout=args.dropout
@@ -230,7 +211,7 @@ def main():
             
         elif args.task == 'cfo_estimation':
             task_head = CFOEstimationHead(
-                input_dim=args.d2,
+                input_dim=2*args.d2,
                 hidden_dim=args.head_hidden_dim,
                 dropout=args.dropout
             )

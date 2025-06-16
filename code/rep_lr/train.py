@@ -3,24 +3,8 @@ import torch
 import wandb
 from tqdm import tqdm
 import torch.nn as nn
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import CosineAnnealingLR
 import math
-
-
-class WarmupScheduler:
-    def __init__(self, optimizer, warmup_epochs, initial_lr=1e-6):
-        self.optimizer = optimizer
-        self.warmup_epochs = warmup_epochs
-        self.initial_lr = initial_lr
-        self.current_epoch = 0
-        
-    def step(self):
-        self.current_epoch += 1
-        if self.current_epoch <= self.warmup_epochs:
-            # Linear warmup
-            lr = self.initial_lr + (1e-4 - self.initial_lr) * (self.current_epoch / self.warmup_epochs)
-            for param_group in self.optimizer.param_groups:
-                param_group['lr'] = lr
 
 
 def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
@@ -32,9 +16,8 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
         device = torch.device(f'cuda:{args.gpu_id}' if torch.cuda.is_available() else 'cpu')
         print(f"Using device: {device}")
 
-        # Initialize schedulers
-        warmup_scheduler = WarmupScheduler(optimizer, warmup_epochs=5, initial_lr=1e-6)
-        scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=3, min_lr=1e-6)
+        # Initialize scheduler
+        scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
 
         # Watch model with wandb
         try:
@@ -62,10 +45,6 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
         }
 
         for epoch in range(args.epochs):
-            # Update learning rate during warmup
-            if epoch < 5:  # Warmup period
-                warmup_scheduler.step()
-
             # ===================================
             #           TRAINING PHASE
             # ===================================
@@ -81,11 +60,13 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                     optimizer.zero_grad()
                     
                     # Projections
-                    projected_sum = 0
+                    projected_tensors = []
                     for task in args.task:
                         data_idx, _ = TASK_TO_INDICES[task]
                         inputs = batch[data_idx].to(device, non_blocking=True).float()
-                        projected_sum += model['projections'][task](inputs)
+                        projected_tensors.append(model['projections'][task](inputs))
+                    
+                    projected_sum = torch.sum(torch.stack(projected_tensors), dim=0)
                     
                     # Shared Encoder
                     encoded = model['encoder'](projected_sum)
@@ -213,11 +194,13 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
 
                     for batch_idx, batch in enumerate(tqdm(val_dl, desc=f"Epoch {epoch+1}/{args.epochs} [Val]")):
                         # Projections
-                        projected_sum = 0
+                        projected_tensors = []
                         for task in args.task:
                             data_idx, _ = TASK_TO_INDICES[task]
                             inputs = batch[data_idx].to(device, non_blocking=True).float()
-                            projected_sum += model['projections'][task](inputs)
+                            projected_tensors.append(model['projections'][task](inputs))
+
+                        projected_sum = torch.sum(torch.stack(projected_tensors), dim=0)
                         
                         # Shared Encoder
                         encoded = model['encoder'](projected_sum)
@@ -306,7 +289,7 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                         print(f"Epoch {epoch+1} Val Loss: {total_val_loss:.4f}")
 
             # Step scheduler, log to wandb, and save model
-            scheduler.step(total_val_loss)
+            scheduler.step()
             try:
                 wandb.log(log_dict, step=epoch)
             except Exception as e:

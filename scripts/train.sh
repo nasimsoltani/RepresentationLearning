@@ -25,49 +25,50 @@
 DATASET_PATH="/home/hofmann/Documents/projects/RepresentationLearning/dataset/rf_partition_dict_0.5.pkl" # <-- IMPORTANT: SET THIS PATH
 
 # =================================================================================
-# Example 1: Single-Task - RF Fingerprinting (Light Projection)
+# Example 1: Single-Task - RF Fingerprinting
 # =================================================================================
-# uv run python code/rep_lr/main.py \
-#     --task rf_fingerprinting \
-#     --pkl_dataset_path $DATASET_PATH \
-#     --save_path results/single_task/rf_light \
-#     --projection_type light \
-#     --epochs 100 \
-#     --batch_size 128 \
-#     --d1 512 --d2 256 \
-#     --encoder_hidden_dims "512,384" \
-#     --head_hidden_dim 256 \
-#     --gpu_id 0
+uv run python code/rep_lr/main.py \
+    --task rf_fingerprinting \
+    --pkl_dataset_path $DATASET_PATH \
+    --save_path results/single_task/rf_fingerprinting \
+    --epochs 100 \
+    --batch_size 128 \
+    --proj_seq_len 256 \
+    --proj_hidden_dim 512 \
+    --d2 256 \
+    --head_hidden_dim 256 \
+    --lr 1e-3 \
+    --gpu_id 0
 
 # =================================================================================
-# Example 2: Single-Task - Channel Estimation (MLP Projection)
+# Example 2: Single-Task - Channel Estimation
 # =================================================================================
 # uv run python code/rep_lr/main.py \
 #     --task channel_estimation \
 #     --pkl_dataset_path $DATASET_PATH \
-#     --save_path results/single_task/channel_mlp \
-#     --projection_type mlp \
+#     --save_path results/single_task/channel_estimation \
 #     --epochs 150 \
 #     --batch_size 128 \
-#     --d1 512 --d2 256 \
-#     --encoder_hidden_dims "512,384" \
+#     --proj_seq_len 256 \
+#     --proj_hidden_dim 512 \
+#     --d2 256 \
 #     --head_hidden_dim 256 \
 #     --gpu_id 0
 
 # =================================================================================
-# Example 3: Single-Task - CFO Estimation (Light Projection)
+# Example 3: Single-Task - CFO Estimation
 # =================================================================================
-uv run python code/rep_lr/main.py \
-    --task cfo_estimation \
-    --pkl_dataset_path $DATASET_PATH \
-    --save_path results/single_task/cfo_light \
-    --projection_type light \
-    --epochs 150 \
-    --batch_size 128 \
-    --d1 512 --d2 256 \
-    --encoder_hidden_dims "512,384" \
-    --head_hidden_dim 256 \
-    --gpu_id 0
+# uv run python code/rep_lr/main.py \
+#     --task cfo_estimation \
+#     --pkl_dataset_path $DATASET_PATH \
+#     --save_path results/single_task/cfo_estimation \
+#     --epochs 150 \
+#     --batch_size 128 \
+#     --proj_seq_len 256 \
+#     --proj_hidden_dim 512 \
+#     --d2 256 \
+#     --head_hidden_dim 256 \
+#     --gpu_id 0
 
 # =================================================================================
 # Example 4: Multi-Task (MTL) - RF + CFO
@@ -79,14 +80,14 @@ uv run python code/rep_lr/main.py \
 #     --task rf_fingerprinting cfo_estimation \
 #     --pkl_dataset_path $DATASET_PATH \
 #     --save_path results/mtl/rf_cfo \
-#     --projection_type light \
 #     --epochs 200 \
 #     --batch_size 64 \
 #     --lr 1e-4 \
 #     --w_rf 1.0 \
 #     --w_cfo 1.5 \
-#     --d1 512 --d2 256 \
-#     --encoder_hidden_dims "512,384" \
+#     --proj_seq_len 256 \
+#     --proj_hidden_dim 512 \
+#     --d2 256 \
 #     --head_hidden_dim 256 \
 #     --gpu_id 0
 
@@ -100,16 +101,15 @@ uv run python code/rep_lr/main.py \
 #     --task rf_fingerprinting cfo_estimation channel_estimation \
 #     --pkl_dataset_path $DATASET_PATH \
 #     --save_path results/mtl/all_tasks \
-#     --projection_type light \
 #     --epochs 300 \
 #     --batch_size 64 \
 #     --lr 1e-4 \
 #     --w_rf 1.0 \
 #     --w_cfo 1.0 \
 #     --w_channel 1.0 \
-#     --d1 512 \
+#     --proj_seq_len 256 \
+#     --proj_hidden_dim 512 \
 #     --d2 256 \
-#     --encoder_hidden_dims "512,384" \
 #     --head_hidden_dim 256 \
 #     --gpu_id 0 \
 #     --save_epochs 10 \

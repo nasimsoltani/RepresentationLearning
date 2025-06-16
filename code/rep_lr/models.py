@@ -19,105 +19,42 @@ The classifier layer will classify the data.
 
 """
 
-class LightProjectionLayer(nn.Module):
-	def __init__(self, in_channels, out_channels, output_dim=512):
+class ComplexSequenceProjector(nn.Module):
+	def __init__(self, input_seq_len, output_seq_len, hidden_dim=512):
 		"""
-		Light projection layer that projects input features to a fixed output dimension using GAP.
+		Projects real and imaginary parts of a sequence to a new length using separate MLPs,
+		then concatenates them.
 		
 		Args:
-			in_channels (int): Number of input channels (e.g. 2 for both RF and CFO/Channel data)
-			out_channels (int): Number of intermediate channels
-			output_dim (int): Final output dimension after flattening and projection
+			input_seq_len (int): The length of the input sequence (L).
+			output_seq_len (int): The desired length of the output sequence (L').
+			hidden_dim (int): The hidden dimension of the MLP.
+		
+		Shape:
+			- Input: (B, 2, input_seq_len)
+			- Output: (B, 2, output_seq_len)
 		"""
-		super(LightProjectionLayer, self).__init__()
-		self.in_channels = in_channels
-		self.out_channels = out_channels
-		self.output_dim = output_dim
-		
-		# 1x1 conv to project channels
-		self.conv1 = nn.Conv1d(in_channels, out_channels, kernel_size=1)  # (B, in_ch, L) -> (B, out_ch, L)
-		self.conv2 = nn.Conv1d(out_channels, out_channels, kernel_size=1)  # (B, out_ch, L) -> (B, out_ch, L)
-		
-		# Global average pooling to remove sequence dimension
-		self.gap = nn.AdaptiveAvgPool1d(1)  # (B, out_ch, L) -> (B, out_ch, 1)
-		
-		# Final projection to desired output dimension
-		self.projection = nn.Sequential(
-			nn.Flatten(),  # (B, out_ch, 1) -> (B, out_ch)
-			nn.Linear(out_channels, output_dim),  # (B, out_ch) -> (B, output_dim)
-			nn.LayerNorm(output_dim),
-			nn.ReLU()
-		)
-
-	def forward(self, x):
-		"""
-		Forward pass of the projection layer.
-		
-		Args:
-			x (torch.Tensor): Input tensor of shape (B, in_channels, L) 
-							 where L can be 1024 for RF or 160 for CFO/Channel
-		
-		Returns:
-			torch.Tensor: Output tensor of shape (B, output_dim)
-		"""
-		x = self.conv1(x)  # (B, in_ch, L) -> (B, out_ch, L)
-		x = self.conv2(x)  # (B, out_ch, L) -> (B, out_ch, L)
-		x = self.gap(x)    # (B, out_ch, L) -> (B, out_ch, 1)
-		x = self.projection(x)  # (B, out_ch, 1) -> (B, output_dim)
-		return x
-
-
-class ProjectionLayerMLP(nn.Module):
-	def __init__(self, in_channels, out_channels, seq_length, output_dim=512):
-		"""
-		Projection layer that preserves sequence information before final projection.
-		
-		Args:
-			in_channels (int): Number of input channels (e.g. 2 for both RF and CFO/Channel data)
-			out_channels (int): Number of channels after conv projection
-			seq_length (int): Length of input sequence (1024 for RF or 160 for CFO/Channel)
-			output_dim (int): Final output dimension after MLP projection
-		"""
-		super(ProjectionLayerMLP, self).__init__()
-		self.in_channels = in_channels
-		self.out_channels = out_channels
-		self.seq_length = seq_length
-		self.output_dim = output_dim
-		
-		# Light conv projection to mix channels
-		self.conv1 = nn.Sequential(
-			nn.Conv1d(in_channels, out_channels, kernel_size=1),  # (B, in_ch, L) -> (B, out_ch, L)
-			nn.BatchNorm1d(out_channels),
-			nn.ReLU()
-		)
-		
-		# MLP projection after flattening
-		flattened_dim = out_channels * seq_length
-		self.mlp = nn.Sequential(
-			nn.Flatten(),  # (B, out_ch, L) -> (B, out_ch * L)
-			nn.Linear(flattened_dim, flattened_dim // 2),  # First reduce dimension
-			nn.LayerNorm(flattened_dim // 2),
+		super().__init__()
+		self.real_projector = nn.Sequential(
+			nn.Linear(input_seq_len, hidden_dim),
 			nn.ReLU(),
-			nn.Dropout(0.1),
-			nn.Linear(flattened_dim // 2, output_dim),  # Project to final dimension
-			nn.LayerNorm(output_dim),
-			nn.ReLU()
+			nn.Linear(hidden_dim, output_seq_len)
+		)
+		self.imag_projector = nn.Sequential(
+			nn.Linear(input_seq_len, hidden_dim),
+			nn.ReLU(),
+			nn.Linear(hidden_dim, output_seq_len)
 		)
 
 	def forward(self, x):
-		"""
-		Forward pass of the projection layer.
-		
-		Args:
-			x (torch.Tensor): Input tensor of shape (B, in_channels, L)
-							 where L is seq_length
-		
-		Returns:
-			torch.Tensor: Output tensor of shape (B, output_dim)
-		"""
-		x = self.conv1(x)  # (B, in_ch, L) -> (B, out_ch, L)
-		x = self.mlp(x)    # (B, out_ch, L) -> (B, output_dim)
-		return x
+		# x shape: (B, 2, L)
+		x_real = x[:, 0, :] # Shape: (B, L)
+		x_imag = x[:, 1, :] # Shape: (B, L)
+
+		proj_real = self.real_projector(x_real).unsqueeze(1) # (B, L') -> (B, 1, L')
+		proj_imag = self.imag_projector(x_imag).unsqueeze(1) # (B, L') -> (B, 1, L')
+
+		return torch.cat([proj_real, proj_imag], dim=1) # (B, 2, L')
 
 
 class MLPBlock(nn.Module):
@@ -171,19 +108,20 @@ class Encoder(nn.Module):
 		
 		Args:
 			slice_size (int): Input sequence length
-			output_dim (int): Final output dimension
+			output_dim (int): Final output dimension for each of the 2 channels.
 			dropout (float): Dropout probability for all layers
 		
 		Shape:
 			- Input: (batch_size, 2, slice_size)
-			- Output: (batch_size, output_dim)
+			- Output: (batch_size, 2, output_dim)
 		
 		Example:
 			>>> encoder = Encoder(1024, 128)
 			>>> x = torch.randn(32, 2, 1024)  # (batch_size=32, channels=2, seq_len=1024)
-			>>> out = encoder(x)              # (batch_size=32, output_dim=128)
+			>>> out = encoder(x)              # (batch_size=32, 2, output_dim=128)
 		"""
 		super(Encoder, self).__init__()
+		self.output_dim = output_dim
 		
 		channel = 64
 		# Convolutional layers
@@ -211,7 +149,7 @@ class Encoder(nn.Module):
 			nn.Linear(conv_output_size, 256),
 			nn.ReLU(),
 			nn.Dropout(dropout),
-			nn.Linear(256, output_dim)
+			nn.Linear(256, 2 * output_dim)
 		)
 		
 		# Initialize weights using Kaiming initialization
@@ -232,12 +170,12 @@ class Encoder(nn.Module):
 			x (torch.Tensor): Input tensor of shape (batch_size, 2, slice_size)
 		
 		Returns:
-			torch.Tensor: Output tensor of shape (batch_size, output_dim)
+			torch.Tensor: Output tensor of shape (batch_size, 2, output_dim)
 		
 		Shape:
 			- Input: (B, 2, L)
 			- Conv blocks: (B, 64, L) -> (B, 64, L/2) -> (B, 64, L/4) -> (B, 64, L/8) -> (B, 64, L/16) -> (B, 64, L/32)
-			- Output: (B, output_dim)
+			- Output: (B, 2, output_dim)
 		"""
 		# x shape: (B, 2, L)
 		x = self.relu(self.conv0(x))  # shape: (B, 64, L)
@@ -262,7 +200,8 @@ class Encoder(nn.Module):
 		
 		features = self.flatten(x)  # shape: (B, 64 * L/32)
 		
-		return self.classifier(features)  # shape: (B, output_dim)
+		output = self.classifier(features)  # shape: (B, 2 * output_dim)
+		return output.view(output.size(0), 2, self.output_dim)
 
 
 class RFClassificationHead(nn.Module):
@@ -271,18 +210,18 @@ class RFClassificationHead(nn.Module):
 		Classification head for RF fingerprinting task.
 		
 		Args:
-			input_dim (int): Input dimension from encoder
+			input_dim (int): Input dimension from encoder (2 * d2)
 			num_classes (int): Number of classes to classify
 			hidden_dim (int): Hidden dimension for intermediate layer
 			dropout (float): Dropout probability
 		
 		Shape:
-			- Input: (batch_size, input_dim)
+			- Input: (batch_size, 2, d2)
 			- Output: (batch_size, num_classes)
 		
 		Example:
-			>>> head = RFClassificationHead(512, num_classes=16)
-			>>> x = torch.randn(32, 512)      # (B, input_dim)
+			>>> head = RFClassificationHead(2*128, num_classes=16)
+			>>> x = torch.randn(32, 2, 128)      # (B, 2, d2)
 			>>> out = head(x)                 # (B, 16)
 		"""
 		super(RFClassificationHead, self).__init__()
@@ -298,10 +237,11 @@ class RFClassificationHead(nn.Module):
 	def forward(self, x):
 		"""
 		Args:
-			x (torch.Tensor): Input tensor of shape (batch_size, input_dim)
+			x (torch.Tensor): Input tensor of shape (batch_size, 2, d2)
 		Returns:
 			torch.Tensor: Logits of shape (batch_size, num_classes)
 		"""
+		x = x.view(x.size(0), -1)
 		return self.classifier(x)
 
 
@@ -311,18 +251,18 @@ class ChannelEstimationHead(nn.Module):
 		Regression head for channel estimation task.
 		
 		Args:
-			input_dim (int): Input dimension from encoder
+			input_dim (int): Input dimension from encoder (2 * d2)
 			hidden_dim (int): Hidden dimension for intermediate layer
 			output_length (int): Length of output sequence (default: 52)
 			dropout (float): Dropout probability
 		
 		Shape:
-			- Input: (batch_size, input_dim)
+			- Input: (batch_size, 2, d2)
 			- Output: (batch_size, 2, output_length)
 		
 		Example:
-			>>> head = ChannelEstimationHead(512)
-			>>> x = torch.randn(32, 512)      # (B, input_dim)
+			>>> head = ChannelEstimationHead(2*128)
+			>>> x = torch.randn(32, 2, 128)      # (B, 2, d2)
 			>>> out = head(x)                 # (B, 2, 52)
 		"""
 		super(ChannelEstimationHead, self).__init__()
@@ -344,11 +284,12 @@ class ChannelEstimationHead(nn.Module):
 	def forward(self, x):
 		"""
 		Args:
-			x (torch.Tensor): Input tensor of shape (batch_size, input_dim)
+			x (torch.Tensor): Input tensor of shape (batch_size, 2, d2)
 		Returns:
 			torch.Tensor: Channel estimates of shape (batch_size, 2, output_length)
 		"""
-		features = self.shared(x)                # (B, input_dim) -> (B, hidden_dim)
+		x = x.view(x.size(0), -1)
+		features = self.shared(x)                # (B, 2*d2) -> (B, hidden_dim)
 		
 		# Get real and imaginary components
 		real = self.real_head(features)          # (B, hidden_dim) -> (B, output_length)
@@ -365,17 +306,17 @@ class CFOEstimationHead(nn.Module):
 		Regression head for CFO estimation task.
 		
 		Args:
-			input_dim (int): Input dimension from encoder
+			input_dim (int): Input dimension from encoder (2 * d2)
 			hidden_dim (int): Hidden dimension for intermediate layer
 			dropout (float): Dropout probability
 		
 		Shape:
-			- Input: (batch_size, input_dim)
+			- Input: (batch_size, 2, d2)
 			- Output: (batch_size, 1)
 		
 		Example:
-			>>> head = CFOEstimationHead(512)
-			>>> x = torch.randn(32, 512)      # (B, input_dim)
+			>>> head = CFOEstimationHead(2*128)
+			>>> x = torch.randn(32, 2, 128)      # (B, 2, d2)
 			>>> out = head(x)                 # (B, 1)
 		"""
 		super(CFOEstimationHead, self).__init__()
@@ -396,11 +337,12 @@ class CFOEstimationHead(nn.Module):
 	def forward(self, x):
 		"""
 		Args:
-			x (torch.Tensor): Input tensor of shape (batch_size, input_dim)
+			x (torch.Tensor): Input tensor of shape (batch_size, 2, d2)
 		Returns:
 			torch.Tensor: CFO estimate of shape (batch_size, 1)
 		"""
-		return self.regressor(x)                 # (B, input_dim) -> (B, 1)
+		x = x.view(x.size(0), -1)
+		return self.regressor(x)                 # (B, 2*d2) -> (B, 1)
 
 
 
