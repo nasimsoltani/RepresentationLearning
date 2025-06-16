@@ -164,40 +164,55 @@ class MLPBlock(nn.Module):
 
 
 class Encoder(nn.Module):
-	def __init__(self, input_dim, hidden_dims=[512, 256], output_dim=128, dropout=0.1):
+	def __init__(self, slice_size, output_dim=128, dropout=0.25):
 		"""
-		An encoder that transforms input through a sequence of MLP blocks.
+		An encoder that transforms input through a sequence of convolutional blocks.
+		Based on RFFingerprintingNet architecture.
 		
 		Args:
-			input_dim (int): Input dimension
-			hidden_dims (list): List of hidden dimensions for intermediate layers
+			slice_size (int): Input sequence length
 			output_dim (int): Final output dimension
 			dropout (float): Dropout probability for all layers
 		
 		Shape:
-			- Input: (batch_size, input_dim)
+			- Input: (batch_size, 2, slice_size)
 			- Output: (batch_size, output_dim)
 		
-		Example for a 3-layer encoder:
-			>>> encoder = Encoder(1024, [512, 256], 128)
-			>>> x = torch.randn(32, 1024)     # (batch_size=32, input_dim=1024)
+		Example:
+			>>> encoder = Encoder(1024, 128)
+			>>> x = torch.randn(32, 2, 1024)  # (batch_size=32, channels=2, seq_len=1024)
 			>>> out = encoder(x)              # (batch_size=32, output_dim=128)
-			
-			The data will flow through these dimensions:
-			(B, 1024) -> (B, 512) -> (B, 256) -> (B, 128)
 		"""
 		super(Encoder, self).__init__()
 		
-		# Build the layer dimensions including input and output
-		layer_dims = [input_dim] + hidden_dims + [output_dim]
+		channel = 64
+		# Convolutional layers
+		self.conv0 = nn.Conv1d(2, channel, kernel_size=7, padding="same")
+		self.conv1 = nn.Conv1d(channel, channel, kernel_size=5, padding="same")
+		self.conv2 = nn.Conv1d(channel, channel, kernel_size=7, padding="same")
+		self.conv3 = nn.Conv1d(channel, channel, kernel_size=5, padding="same")
+		self.conv4 = nn.Conv1d(channel, channel, kernel_size=7, padding="same")
+		self.conv5 = nn.Conv1d(channel, channel, kernel_size=5, padding="same")
+		self.conv6 = nn.Conv1d(channel, channel, kernel_size=7, padding="same")
+		self.conv7 = nn.Conv1d(channel, channel, kernel_size=5, padding="same")
+		self.conv8 = nn.Conv1d(channel, channel, kernel_size=7, padding="same")
+		self.conv9 = nn.Conv1d(channel, channel, kernel_size=5, padding="same")
 		
-		# Create sequential MLP blocks
-		layers = []
-		for i in range(len(layer_dims) - 1):
-			# Each block: (B, layer_dims[i]) -> (B, layer_dims[i+1])
-			layers.append(MLPBlock(layer_dims[i], layer_dims[i+1], dropout))
+		self.pool1 = nn.MaxPool1d(2,2)
+		self.flatten = nn.Flatten()
+		self.relu = nn.ReLU()
 		
-		self.encoder = nn.Sequential(*layers)
+		# Calculate the size after all pooling operations
+		conv_output_size = channel * (slice_size // (2**5))
+		
+		# Final MLP layers
+		self.classifier = nn.Sequential(
+			nn.Dropout(dropout),
+			nn.Linear(conv_output_size, 256),
+			nn.ReLU(),
+			nn.Dropout(dropout),
+			nn.Linear(256, output_dim)
+		)
 		
 		# Initialize weights using Kaiming initialization
 		self.apply(self._init_weights)
@@ -214,17 +229,40 @@ class Encoder(nn.Module):
 		Forward pass through the encoder.
 		
 		Args:
-			x (torch.Tensor): Input tensor of shape (batch_size, input_dim)
+			x (torch.Tensor): Input tensor of shape (batch_size, 2, slice_size)
 		
 		Returns:
 			torch.Tensor: Output tensor of shape (batch_size, output_dim)
 		
 		Shape:
-			- Input: (B, input_dim)
-			- Hidden: (B, hidden_dims[0]) -> (B, hidden_dims[1]) -> ...
+			- Input: (B, 2, L)
+			- Conv blocks: (B, 64, L) -> (B, 64, L/2) -> (B, 64, L/4) -> (B, 64, L/8) -> (B, 64, L/16) -> (B, 64, L/32)
 			- Output: (B, output_dim)
 		"""
-		return self.encoder(x)  # (B, input_dim) -> (B, output_dim)
+		# x shape: (B, 2, L)
+		x = self.relu(self.conv0(x))  # shape: (B, 64, L)
+		x = self.relu(self.conv1(x))  # shape: (B, 64, L)
+		x = self.pool1(x)  # shape: (B, 64, L/2)
+		
+		x = self.relu(self.conv2(x))  # shape: (B, 64, L/2)
+		x = self.relu(self.conv3(x))  # shape: (B, 64, L/2)
+		x = self.pool1(x)  # shape: (B, 64, L/4)
+		
+		x = self.relu(self.conv4(x))  # shape: (B, 64, L/4)
+		x = self.relu(self.conv5(x))  # shape: (B, 64, L/4)
+		x = self.pool1(x)  # shape: (B, 64, L/8)
+		
+		x = self.relu(self.conv6(x))  # shape: (B, 64, L/8)
+		x = self.relu(self.conv7(x))  # shape: (B, 64, L/8)
+		x = self.pool1(x)  # shape: (B, 64, L/16)
+		
+		x = self.relu(self.conv8(x))  # shape: (B, 64, L/16)
+		x = self.relu(self.conv9(x))  # shape: (B, 64, L/16)
+		x = self.pool1(x)  # shape: (B, 64, L/32)
+		
+		features = self.flatten(x)  # shape: (B, 64 * L/32)
+		
+		return self.classifier(features)  # shape: (B, output_dim)
 
 
 class RFClassificationHead(nn.Module):

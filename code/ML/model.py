@@ -45,33 +45,43 @@ class RFFingerprintingNet(nn.Module):
 		)
 
 	def forward(self, x, common_rep=None):
+		# x shape: (B, 2, L)
 		if self.mtl:
 			if common_rep is None:
 				raise ValueError("common_rep is required for MTL mode")
-			features = common_rep
+			features = common_rep  # shape: (B, common_rep_dim)
 		else:
-			x = self.relu(self.conv0(x))
-			x = self.relu(self.conv1(x))
-			x = self.pool1(x)
+			x = self.relu(self.conv0(x))  # shape: (B, 64, L)
+			x = self.relu(self.conv1(x))  # shape: (B, 64, L)
+			x = self.pool1(x)  # shape: (B, 64, L/2)
 		
-			x = self.relu(self.conv2(x))
-			x = self.relu(self.conv3(x))
-			x = self.pool1(x)
+			x = self.relu(self.conv2(x))  # shape: (B, 64, L/2)
+			x = self.relu(self.conv3(x))  # shape: (B, 64, L/2)
+			x = self.pool1(x)  # shape: (B, 64, L/4)
 			
-			x = self.relu(self.conv4(x))
-			x = self.relu(self.conv5(x))
-			x = self.pool1(x)
+			x = self.relu(self.conv4(x))  # shape: (B, 64, L/4)
+			x = self.relu(self.conv5(x))  # shape: (B, 64, L/4)
+			x = self.pool1(x)  # shape: (B, 64, L/8)
 
-			x = self.relu(self.conv6(x))
-			x = self.relu(self.conv7(x))
-			x = self.pool1(x)
+			x = self.relu(self.conv6(x))  # shape: (B, 64, L/8)
+			x = self.relu(self.conv7(x))  # shape: (B, 64, L/8)
+			x = self.pool1(x)  # shape: (B, 64, L/16)
 			
-			x = self.relu(self.conv8(x))
-			x = self.relu(self.conv9(x))
-			x = self.pool1(x)
+			x = self.relu(self.conv8(x))  # shape: (B, 64, L/16)
+			x = self.relu(self.conv9(x))  # shape: (B, 64, L/16)
+			x = self.pool1(x)  # shape: (B, 64, L/32)
 		
-			features = self.flatten(x)
+			features = self.flatten(x)  # shape: (B, 64 * L/32)
 		
+		# classifier layers:
+		# Dropout -> (B, 64 * L/32) or (B, common_rep_dim)
+		# Linear -> (B, 256)
+		# ReLU -> (B, 256)
+		# Dropout -> (B, 256)
+		# Linear -> (B, 128)
+		# ReLU -> (B, 128)
+		# Dropout -> (B, 128)
+		# Linear -> (B, num_classes)
 		return self.classifier(features)
 
 
