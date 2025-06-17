@@ -7,4 +7,9 @@ mat_dataset/
 results/
 wandb/
 .env
+OracleDatasetProcessed-arranged.zip
+results_*/
+.cache/*
+pkl_files/
+\$SCRATCH/
 results_20250616_190950/

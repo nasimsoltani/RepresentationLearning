@@ -22,28 +22,28 @@
 # --wandb_project: Name for your Weights & Biases project.
 
 # --- Configuration ---
-DATASET_PATH="/home/hofmann/Documents/projects/RepresentationLearning/dataset/rf_partition_dict_0.5.pkl" # <-- IMPORTANT: SET THIS PATH
+DATASET_PATH="/scratch/10608/aadharsh_aadhithya/data/rep_lr/OracleDatasetProcessed-arranged/rf_partition_dict_0.5.pkl" # <-- IMPORTANT: SET THIS PATH
 
 # =================================================================================
 # Example 1: Single-Task - RF Fingerprinting
 # =================================================================================
-uv run python code/rep_lr/main.py \
-    --task rf_fingerprinting \
-    --pkl_dataset_path $DATASET_PATH \
-    --save_path results/single_task/rf_fingerprinting \
-    --epochs 100 \
-    --batch_size 128 \
-    --proj_seq_len 256 \
-    --proj_hidden_dim 512 \
-    --d2 256 \
-    --head_hidden_dim 256 \
-    --lr 1e-3 \
-    --gpu_id 0
+# python code/rep_lr/main.py \
+#     --task rf_fingerprinting \
+#     --pkl_dataset_path $DATASET_PATH \
+#     --save_path results/single_task/rf_fingerprinting \
+#     --epochs 300 \
+#     --batch_size 128 \
+#     --proj_seq_len 256 \
+#     --proj_hidden_dim 512 \
+#     --d2 256 \
+#     --head_hidden_dim 256 \
+#     --lr 1e-3 \
+#     --gpu_id 0
 
 # =================================================================================
 # Example 2: Single-Task - Channel Estimation
 # =================================================================================
-# uv run python code/rep_lr/main.py \
+# python code/rep_lr/main.py \
 #     --task channel_estimation \
 #     --pkl_dataset_path $DATASET_PATH \
 #     --save_path results/single_task/channel_estimation \
@@ -58,7 +58,7 @@ uv run python code/rep_lr/main.py \
 # =================================================================================
 # Example 3: Single-Task - CFO Estimation
 # =================================================================================
-# uv run python code/rep_lr/main.py \
+# python code/rep_lr/main.py \
 #     --task cfo_estimation \
 #     --pkl_dataset_path $DATASET_PATH \
 #     --save_path results/single_task/cfo_estimation \
@@ -75,21 +75,21 @@ uv run python code/rep_lr/main.py \
 # Here, we train two tasks together. The --mtl flag is required.
 # We can also assign different weights to the task losses.
 # =================================================================================
-# uv run python code/rep_lr/main.py \
-#     --mtl \
-#     --task rf_fingerprinting cfo_estimation \
-#     --pkl_dataset_path $DATASET_PATH \
-#     --save_path results/mtl/rf_cfo \
-#     --epochs 200 \
-#     --batch_size 64 \
-#     --lr 1e-4 \
-#     --w_rf 1.0 \
-#     --w_cfo 1.5 \
-#     --proj_seq_len 256 \
-#     --proj_hidden_dim 512 \
-#     --d2 256 \
-#     --head_hidden_dim 256 \
-#     --gpu_id 0
+python code/rep_lr/main.py \
+    --mtl \
+    --task rf_fingerprinting cfo_estimation \
+    --pkl_dataset_path $DATASET_PATH \
+    --save_path results/mtl/rf_cfo \
+    --epochs 200 \
+    --batch_size 64 \
+    --lr 1e-4 \
+    --w_rf 1.0 \
+    --w_cfo 1.5 \
+    --proj_seq_len 256 \
+    --proj_hidden_dim 512 \
+    --d2 256 \
+    --head_hidden_dim 256 \
+    --gpu_id 0
 
 # =================================================================================
 # Example 5: Multi-Task (MTL) - All three tasks (ACTIVE BY DEFAULT)
