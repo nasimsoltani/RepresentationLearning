@@ -9,4 +9,6 @@ wandb/
 .env
 OracleDatasetProcessed-arranged.zip
 results_*/
-pkl_files /
+.cache/*
+pkl_files/
+\$SCRATCH/
