@@ -110,6 +110,8 @@ def main():
     val_list = content['val']
     max_cfo = content['max_cfo']
 
+
+    
     dataset_args = argparse.Namespace(slice_len=args.slice_len)
     train_dataset = TrainDataset(train_list, ID_class_dict, dataset_args, max_cfo)
     val_dataset = TrainDataset(val_list, ID_class_dict, dataset_args, max_cfo)

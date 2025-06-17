@@ -7,3 +7,6 @@ mat_dataset/
 results/
 wandb/
 .env
+OracleDatasetProcessed-arranged.zip
+results_*/
+pkl_files /

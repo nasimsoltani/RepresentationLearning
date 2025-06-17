@@ -129,11 +129,11 @@ class TrainDataset(Dataset):
 
 
 
-if __name__ == '__main__':
+# if __name__ == '__main__':
 
-	file_path = '/home/hofmann/Documents/projects/RepresentationLearning/dataset/OracleDatasetProcessed-arranged/RFfingerprinting_run1_Radio9_8ft_984.mat' 
+# 	file_path = '/home/hofmann/Documents/projects/RepresentationLearning/dataset/OracleDatasetProcessed-arranged/RFfingerprinting_run1_Radio9_8ft_984.mat' 
 
-	[X1, y1, X2, y2, X3, y3] = read_file(file_path, max_cfo=1.0)
-	print(X1.shape, y1, X2.shape, y2.shape, X3.shape, y3.shape)
-	print(y3)
+# 	[X1, y1, X2, y2, X3, y3] = read_file(file_path, max_cfo=1.0)
+# 	print(X1.shape, y1, X2.shape, y2.shape, X3.shape, y3.shape)
+# 	print(y3)
 #torch.Size([2, 4000]) 9 torch.Size([2, 160]) torch.Size([1, 1]) torch.Size([2, 160]) torch.Size([2, 52])
