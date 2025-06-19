@@ -17,14 +17,25 @@
 # =================================================================================
 
 # --- Configuration ---
+
+if [ -f .env ]; then
+    echo "Loading environment variables from .env file"
+    set -o allexport
+    source .env
+    set +o allexport
+fi
+
+
+
 # IMPORTANT: SET THIS PATH to the top-level directory containing all your experiment results.
-RESULTS_DIR="/home/hofmann/Documents/projects/RepresentationLearning/results_20250617_233353" # <-- CHANGE THIS
+RESULTS_DIR="/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250619_145724" # <-- CHANGE THIS
 
 # IMPORTANT: SET THIS to the path of the .pkl dataset to use for all evaluations.
-EVAL_DATASET_PATH="/home/hofmann/Documents/projects/RepresentationLearning/dataset/rf_partition_dict_0.5.pkl" # <-- CHANGE THIS
+EVAL_DATASET_PATH="$PKL_FILE_PATH/rf_partition_dict_0.5.pkl" 
+#EVAL_DATASET_PATH="/home/hofmann/Documents/projects/RepresentationLearning/dataset/rf_partition_dict_0.5.pkl" # <-- CHANGE THIS
 
 GPU_ID=0
-TEST_FRACTION=0.4
+TEST_FRACTION=0.8
 
 # =================================================================================
 # Run Batch Evaluation
@@ -58,7 +69,7 @@ for experiment_dir in "$RESULTS_DIR"/*/; do
             echo "--- Found model. Evaluating: $MODEL_PATH ---"
 
             # Run the evaluation script
-            uv run python code/rep_lr/eval.py \
+            python code/rep_lr/eval.py \
                 --model_path "$MODEL_PATH" \
                 --eval_pkl_dataset_path "$EVAL_DATASET_PATH" \
                 --gpu_id $GPU_ID \

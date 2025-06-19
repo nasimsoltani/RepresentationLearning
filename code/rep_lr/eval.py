@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import pickle
 import random
+import re
 
 from models import (ComplexSequenceProjector, Encoder, 
                    RFClassificationHead, ChannelEstimationHead, CFOEstimationHead)
@@ -104,6 +105,63 @@ def evaluate_rf_fingerprinting(model, test_dl, device, output_dir, class_names, 
     cm_path = os.path.join(output_dir, 'confusion_matrix.png')
     plt.savefig(cm_path)
     print(f"\nConfusion matrix saved to {cm_path}")
+    plt.close()
+
+    # Plot distance vs accuracy
+    plot_distance_vs_accuracy(predictions_path)
+
+def plot_distance_vs_accuracy(predictions_path):
+    """
+    Plots distance vs accuracy based on predictions from an RF fingerprinting task.
+
+    Args:
+        predictions_path (str): Path to the predictions JSON file.
+    """
+    try:
+        with open(predictions_path, 'r') as f:
+            predictions = json.load(f)
+    except FileNotFoundError:
+        print(f"Error: Predictions file not found at {predictions_path}")
+        return
+    except json.JSONDecodeError:
+        print(f"Error: Could not decode JSON from {predictions_path}")
+        return
+
+    # Group predictions by distance
+    distance_data = {}
+    for item in predictions:
+        filename = item['filename']
+        match = re.search(r'_(\d+)ft_', filename)
+        if match:
+            distance = int(match.group(1))
+            if distance not in distance_data:
+                distance_data[distance] = {'correct': 0, 'total': 0}
+            
+            if item['pred_class'] == item['gt_class']:
+                distance_data[distance]['correct'] += 1
+            distance_data[distance]['total'] += 1
+
+    if not distance_data:
+        print("No distances found in filenames. Skipping distance vs. accuracy plot.")
+        return
+
+    # Calculate accuracies and sort by distance
+    sorted_distances = sorted(distance_data.keys())
+    accuracies = [distance_data[d]['correct'] / distance_data[d]['total'] for d in sorted_distances]
+
+    # Create the plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(sorted_distances, accuracies, marker='o', linestyle='-')
+    plt.title('Distance vs. Accuracy')
+    plt.xlabel('Distance (ft)')
+    plt.ylabel('Accuracy')
+    plt.grid(True)
+    
+    # Save the plot
+    output_dir = os.path.dirname(predictions_path)
+    plot_path = os.path.join(output_dir, 'distance_vs_accuracy.png')
+    plt.savefig(plot_path)
+    print(f"Distance vs. accuracy plot saved to {plot_path}")
     plt.close()
 
 def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, args):
