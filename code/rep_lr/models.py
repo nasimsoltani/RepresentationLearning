@@ -152,7 +152,7 @@ class Encoder(nn.Module):
 		self.relu = nn.LeakyReLU(negative_slope=0.01)
 		
 		# Calculate the size after all pooling operations
-		conv_output_size = channel * (slice_size // (2**5))
+		conv_output_size = channel * (slice_size // (2**3))
 		
 		# Final MLP layers
 		self.classifier = nn.Sequential(
@@ -190,24 +190,37 @@ class Encoder(nn.Module):
 			- Output: (B, 2, output_dim)
 		"""
 		# x shape: (B, 2, L)
+		# Block 1
 		x = self.relu(self.bn0(self.conv0(x)))  # shape: (B, 64, L)
 		x = self.relu(self.bn1(self.conv1(x)))  # shape: (B, 64, L)
 		x = self.pool1(x)  # shape: (B, 64, L/2)
 		
+		# Block 2 with residual
+		residual = x
 		x = self.relu(self.bn2(self.conv2(x)))  # shape: (B, 64, L/2)
-		x = self.relu(self.bn3(self.conv3(x)))  # shape: (B, 64, L/2)
+		x = self.bn3(self.conv3(x))
+		x = self.relu(x + residual)
 		x = self.pool1(x)  # shape: (B, 64, L/4)
 		
+		# Block 3 with residual
+		residual = x
 		x = self.relu(self.bn4(self.conv4(x)))  # shape: (B, 64, L/4)
-		x = self.relu(self.bn5(self.conv5(x)))  # shape: (B, 64, L/4)
+		x = self.bn5(self.conv5(x))
+		x = self.relu(x + residual)
 		x = self.pool1(x)  # shape: (B, 64, L/8)
 		
+		# Block 4 with residual
+		residual = x
 		x = self.relu(self.bn6(self.conv6(x)))  # shape: (B, 64, L/8)
-		x = self.relu(self.bn7(self.conv7(x)))  # shape: (B, 64, L/8)
+		x = self.bn7(self.conv7(x))
+		x = self.relu(x + residual)
 		x = self.pool1(x)  # shape: (B, 64, L/16)
 		
+		# Block 5 with residual
+		residual = x
 		x = self.relu(self.bn8(self.conv8(x)))  # shape: (B, 64, L/16)
-		x = self.relu(self.bn9(self.conv9(x)))  # shape: (B, 64, L/16)
+		x = self.bn9(self.conv9(x))
+		x = self.relu(x + residual)
 		x = self.pool1(x)  # shape: (B, 64, L/32)
 		
 		features = self.flatten(x)  # shape: (B, 64 * L/32)
