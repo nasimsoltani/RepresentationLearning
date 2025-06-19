@@ -1,5 +1,12 @@
 #!/bin/bash
 
+if [ -f .env ]; then
+    echo "Loading environment variables from .env file"
+    set -o allexport
+    source .env
+    set +o allexport
+fi
+
 # =================================================================================
 # Batch Experiment Script for Representation Learning Models
 # =================================================================================
@@ -13,7 +20,7 @@
 # =================================================================================
 
 # --- Configuration ---
-DATASET_PATH="/home/hofmann/Documents/projects/RepresentationLearning/dataset/rf_partition_dict_0.5.pkl" # <-- IMPORTANT: SET THIS PATH IF DIFFERENT
+DATASET_PATH="$PKL_FILE_PATH/rf_partition_dict_0.5.pkl" # <-- IMPORTANT: SET THIS PATH IF DIFFERENT
 GPU_ID=0 # <-- Set the GPU to use
 
 # Generate a timestamped directory for this run
@@ -31,7 +38,7 @@ HEAD_HIDDEN_DIM=256
 # # 1. Single-Task: RF Fingerprinting
 # # =================================================================================
 echo "--- Starting Single-Task: RF Fingerprinting ---"
-uv run python code/rep_lr/main.py \
+python code/rep_lr/main.py \
     --task rf_fingerprinting \
     --pkl_dataset_path $DATASET_PATH \
     --save_path "${RESULTS_DIR}/rf" \
@@ -42,8 +49,8 @@ uv run python code/rep_lr/main.py \
     --proj_hidden_dim $PROJ_HIDDEN_DIM \
     --d2 $D2 \
     --head_hidden_dim $HEAD_HIDDEN_DIM \
-    --gpu_id $GPU_ID
-    --dropout 0.0
+    --gpu_id $GPU_ID \
+    --dropout 0.1
 
 # # =================================================================================
 # # 2. Single-Task: CFO Estimation
