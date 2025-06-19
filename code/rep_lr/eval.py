@@ -10,7 +10,7 @@ from tqdm import tqdm
 import pickle
 import random
 
-from models import (LightProjectionLayer, ProjectionLayerMLP, Encoder, 
+from models import (ComplexSequenceProjector, Encoder, 
                    RFClassificationHead, ChannelEstimationHead, CFOEstimationHead)
 from py_datasets import TrainDataset
 from torch.utils.data import DataLoader
@@ -385,6 +385,7 @@ def evaluate_channel_estimation(model, test_dl, device, output_dir, args):
 def main():
     parser = argparse.ArgumentParser(description='Evaluation script for representation learning models.')
     parser.add_argument('--model_path', type=str, required=True, help='Path to the trained model checkpoint (.pt file).')
+    parser.add_argument('--eval_pkl_dataset_path', type=str, default=None, help='Path to a specific pkl dataset file for evaluation. Overrides path in args.json.')
     parser.add_argument('--gpu_id', default=0, type=int, help='ID of GPU to be used.')
     parser.add_argument('--test_fraction', type=float, default=1.0, help='Fraction of the test set to use for evaluation.')
     cli_args = parser.parse_args()
@@ -408,7 +409,17 @@ def main():
     print(f"Using device: {device}")
 
     # Load test data
-    with open(train_args.pkl_dataset_path, 'rb') as handle:
+    eval_data_path = cli_args.eval_pkl_dataset_path
+    if eval_data_path:
+        print(f"Using provided evaluation dataset: {eval_data_path}")
+    else:
+        eval_data_path = train_args.pkl_dataset_path
+        print(f"Using evaluation dataset from training args: {eval_data_path}")
+    
+    if not os.path.exists(eval_data_path):
+        raise FileNotFoundError(f"Evaluation dataset not found at '{eval_data_path}'")
+
+    with open(eval_data_path, 'rb') as handle:
         content = pickle.load(handle)
     test_list = content['test']
     max_cfo = content['max_cfo']
@@ -441,23 +452,20 @@ def main():
         for task in train_args.task:
             if task == 'rf_fingerprinting':
                 seq_len = train_args.slice_len
-                proj_layer = ProjectionLayerMLP if train_args.projection_type == 'mlp' else LightProjectionLayer
-                projections[task] = proj_layer(in_channels=2, out_channels=train_args.proj_channels, **({'seq_length': seq_len} if train_args.projection_type == 'mlp' else {}), output_dim=train_args.d1)
-                heads[task] = RFClassificationHead(input_dim=train_args.d2, num_classes=num_classes, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
+                projections[task] = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
+                heads[task] = RFClassificationHead(input_dim=2*train_args.d2, num_classes=num_classes, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
             
             elif task == 'channel_estimation':
                 seq_len = 160
-                proj_layer = ProjectionLayerMLP if train_args.projection_type == 'mlp' else LightProjectionLayer
-                projections[task] = proj_layer(in_channels=2, out_channels=train_args.proj_channels, **({'seq_length': seq_len} if train_args.projection_type == 'mlp' else {}), output_dim=train_args.d1)
-                heads[task] = ChannelEstimationHead(input_dim=train_args.d2, hidden_dim=train_args.head_hidden_dim, output_length=52, dropout=train_args.dropout)
+                projections[task] = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
+                heads[task] = ChannelEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, output_length=52, dropout=train_args.dropout)
 
             elif task == 'cfo_estimation':
                 seq_len = 160
-                proj_layer = ProjectionLayerMLP if train_args.projection_type == 'mlp' else LightProjectionLayer
-                projections[task] = proj_layer(in_channels=2, out_channels=train_args.proj_channels, **({'seq_length': seq_len} if train_args.projection_type == 'mlp' else {}), output_dim=train_args.d1)
-                heads[task] = CFOEstimationHead(input_dim=train_args.d2, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
+                projections[task] = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
+                heads[task] = CFOEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
 
-        encoder = Encoder(input_dim=train_args.d1, hidden_dims=train_args.encoder_hidden_dims, output_dim=train_args.d2, dropout=train_args.dropout)
+        encoder = Encoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout)
         
         model = torch.nn.ModuleDict({
             'projections': projections,
@@ -468,19 +476,17 @@ def main():
         print("Reconstructing single-task model architecture.")
         task_name = train_args.task
         seq_len = train_args.slice_len if task_name == 'rf_fingerprinting' else 160
-        if train_args.projection_type == 'light':
-            projection = LightProjectionLayer(in_channels=2, out_channels=train_args.proj_channels, output_dim=train_args.d1)
-        else:
-            projection = ProjectionLayerMLP(in_channels=2, out_channels=train_args.proj_channels, seq_length=seq_len, output_dim=train_args.d1)
         
-        encoder = Encoder(input_dim=train_args.d1, hidden_dims=train_args.encoder_hidden_dims, output_dim=train_args.d2, dropout=train_args.dropout)
+        projection = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
+        
+        encoder = Encoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout)
 
         if task_name == 'rf_fingerprinting':
-            task_head = RFClassificationHead(input_dim=train_args.d2, num_classes=num_classes, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
+            task_head = RFClassificationHead(input_dim=2*train_args.d2, num_classes=num_classes, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
         elif task_name == 'channel_estimation':
-            task_head = ChannelEstimationHead(input_dim=train_args.d2, hidden_dim=train_args.head_hidden_dim, output_length=52, dropout=train_args.dropout)
+            task_head = ChannelEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, output_length=52, dropout=train_args.dropout)
         elif task_name == 'cfo_estimation':
-            task_head = CFOEstimationHead(input_dim=train_args.d2, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
+            task_head = CFOEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
         else:
             raise ValueError(f"Unknown task: {task_name}")
 

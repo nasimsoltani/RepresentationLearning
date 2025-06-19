@@ -18,10 +18,13 @@
 
 # --- Configuration ---
 # IMPORTANT: SET THIS PATH to the top-level directory containing all your experiment results.
-RESULTS_DIR="/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250616_190950" # <-- CHANGE THIS
+RESULTS_DIR="/home/hofmann/Documents/projects/RepresentationLearning/results_20250617_233353" # <-- CHANGE THIS
+
+# IMPORTANT: SET THIS to the path of the .pkl dataset to use for all evaluations.
+EVAL_DATASET_PATH="/home/hofmann/Documents/projects/RepresentationLearning/dataset/rf_partition_dict_0.5.pkl" # <-- CHANGE THIS
 
 GPU_ID=0
-TEST_FRACTION=0.1
+TEST_FRACTION=0.4
 
 # =================================================================================
 # Run Batch Evaluation
@@ -30,6 +33,12 @@ TEST_FRACTION=0.1
 if [ ! -d "$RESULTS_DIR" ]; then
     echo "Error: Results directory not found at '$RESULTS_DIR'"
     echo "Please update the RESULTS_DIR variable in this script."
+    exit 1
+fi
+
+if [ ! -f "$EVAL_DATASET_PATH" ]; then
+    echo "Error: Evaluation dataset not found at '$EVAL_DATASET_PATH'"
+    echo "Please update the EVAL_DATASET_PATH variable in this script."
     exit 1
 fi
 
@@ -49,8 +58,9 @@ for experiment_dir in "$RESULTS_DIR"/*/; do
             echo "--- Found model. Evaluating: $MODEL_PATH ---"
 
             # Run the evaluation script
-            python code/rep_lr/eval.py \
+            uv run python code/rep_lr/eval.py \
                 --model_path "$MODEL_PATH" \
+                --eval_pkl_dataset_path "$EVAL_DATASET_PATH" \
                 --gpu_id $GPU_ID \
                 --test_fraction $TEST_FRACTION
 

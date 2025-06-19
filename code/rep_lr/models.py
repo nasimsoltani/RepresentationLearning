@@ -37,12 +37,12 @@ class ComplexSequenceProjector(nn.Module):
 		super().__init__()
 		self.real_projector = nn.Sequential(
 			nn.Linear(input_seq_len, hidden_dim),
-			nn.ReLU(),
+			nn.LeakyReLU(negative_slope=0.01),
 			nn.Linear(hidden_dim, output_seq_len)
 		)
 		self.imag_projector = nn.Sequential(
 			nn.Linear(input_seq_len, hidden_dim),
-			nn.ReLU(),
+			nn.LeakyReLU(negative_slope=0.01),
 			nn.Linear(hidden_dim, output_seq_len)
 		)
 
@@ -83,7 +83,7 @@ class MLPBlock(nn.Module):
 		self.mlp = nn.Sequential(
 			nn.Linear(in_dim, out_dim),        # (B, in_dim) -> (B, out_dim)
 			nn.LayerNorm(out_dim),             # (B, out_dim) -> (B, out_dim)
-			nn.ReLU(),                         # (B, out_dim) -> (B, out_dim)
+			nn.LeakyReLU(negative_slope=0.01),                         # (B, out_dim) -> (B, out_dim)
 			nn.Dropout(dropout)                 # (B, out_dim) -> (B, out_dim)
 		)
 	
@@ -136,9 +136,20 @@ class Encoder(nn.Module):
 		self.conv8 = nn.Conv1d(channel, channel, kernel_size=7, padding="same")
 		self.conv9 = nn.Conv1d(channel, channel, kernel_size=5, padding="same")
 		
+		self.bn0 = nn.BatchNorm1d(channel)
+		self.bn1 = nn.BatchNorm1d(channel)
+		self.bn2 = nn.BatchNorm1d(channel)
+		self.bn3 = nn.BatchNorm1d(channel)
+		self.bn4 = nn.BatchNorm1d(channel)
+		self.bn5 = nn.BatchNorm1d(channel)
+		self.bn6 = nn.BatchNorm1d(channel)
+		self.bn7 = nn.BatchNorm1d(channel)
+		self.bn8 = nn.BatchNorm1d(channel)
+		self.bn9 = nn.BatchNorm1d(channel)
+
 		self.pool1 = nn.MaxPool1d(2,2)
 		self.flatten = nn.Flatten()
-		self.relu = nn.ReLU()
+		self.relu = nn.LeakyReLU(negative_slope=0.01)
 		
 		# Calculate the size after all pooling operations
 		conv_output_size = channel * (slice_size // (2**5))
@@ -147,7 +158,8 @@ class Encoder(nn.Module):
 		self.classifier = nn.Sequential(
 			nn.Dropout(dropout),
 			nn.Linear(conv_output_size, 256),
-			nn.ReLU(),
+			nn.LayerNorm(256),
+			nn.LeakyReLU(negative_slope=0.01),
 			nn.Dropout(dropout),
 			nn.Linear(256, 2 * output_dim)
 		)
@@ -158,7 +170,7 @@ class Encoder(nn.Module):
 	def _init_weights(self, module):
 		"""Initialize weights for linear layers using Kaiming initialization"""
 		if isinstance(module, nn.Linear):
-			nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='relu')
+			nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='leaky_relu')
 			if module.bias is not None:
 				nn.init.zeros_(module.bias)
 	
@@ -178,24 +190,24 @@ class Encoder(nn.Module):
 			- Output: (B, 2, output_dim)
 		"""
 		# x shape: (B, 2, L)
-		x = self.relu(self.conv0(x))  # shape: (B, 64, L)
-		x = self.relu(self.conv1(x))  # shape: (B, 64, L)
+		x = self.relu(self.bn0(self.conv0(x)))  # shape: (B, 64, L)
+		x = self.relu(self.bn1(self.conv1(x)))  # shape: (B, 64, L)
 		x = self.pool1(x)  # shape: (B, 64, L/2)
 		
-		x = self.relu(self.conv2(x))  # shape: (B, 64, L/2)
-		x = self.relu(self.conv3(x))  # shape: (B, 64, L/2)
+		x = self.relu(self.bn2(self.conv2(x)))  # shape: (B, 64, L/2)
+		x = self.relu(self.bn3(self.conv3(x)))  # shape: (B, 64, L/2)
 		x = self.pool1(x)  # shape: (B, 64, L/4)
 		
-		x = self.relu(self.conv4(x))  # shape: (B, 64, L/4)
-		x = self.relu(self.conv5(x))  # shape: (B, 64, L/4)
+		x = self.relu(self.bn4(self.conv4(x)))  # shape: (B, 64, L/4)
+		x = self.relu(self.bn5(self.conv5(x)))  # shape: (B, 64, L/4)
 		x = self.pool1(x)  # shape: (B, 64, L/8)
 		
-		x = self.relu(self.conv6(x))  # shape: (B, 64, L/8)
-		x = self.relu(self.conv7(x))  # shape: (B, 64, L/8)
+		x = self.relu(self.bn6(self.conv6(x)))  # shape: (B, 64, L/8)
+		x = self.relu(self.bn7(self.conv7(x)))  # shape: (B, 64, L/8)
 		x = self.pool1(x)  # shape: (B, 64, L/16)
 		
-		x = self.relu(self.conv8(x))  # shape: (B, 64, L/16)
-		x = self.relu(self.conv9(x))  # shape: (B, 64, L/16)
+		x = self.relu(self.bn8(self.conv8(x)))  # shape: (B, 64, L/16)
+		x = self.relu(self.bn9(self.conv9(x)))  # shape: (B, 64, L/16)
 		x = self.pool1(x)  # shape: (B, 64, L/32)
 		
 		features = self.flatten(x)  # shape: (B, 64 * L/32)
@@ -229,10 +241,18 @@ class RFClassificationHead(nn.Module):
 		self.classifier = nn.Sequential(
 			nn.Linear(input_dim, hidden_dim),    # (B, input_dim) -> (B, hidden_dim)
 			nn.LayerNorm(hidden_dim),
-			nn.ReLU(),
+			nn.LeakyReLU(negative_slope=0.01),
 			nn.Dropout(dropout),
 			nn.Linear(hidden_dim, num_classes)    # (B, hidden_dim) -> (B, num_classes)
 		)
+
+		# Add proper initialization
+		for m in self.modules():
+			if isinstance(m, nn.Linear):
+				nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='leaky_relu')
+				if m.bias is not None:
+					nn.init.constant_(m.bias, 0)
+					
 	
 	def forward(self, x):
 		"""
@@ -243,6 +263,9 @@ class RFClassificationHead(nn.Module):
 		"""
 		x = x.view(x.size(0), -1)
 		return self.classifier(x)
+	
+
+	
 
 
 class ChannelEstimationHead(nn.Module):
@@ -273,7 +296,7 @@ class ChannelEstimationHead(nn.Module):
 		self.shared = nn.Sequential(
 			nn.Linear(input_dim, hidden_dim),    # (B, input_dim) -> (B, hidden_dim)
 			nn.LayerNorm(hidden_dim),
-			nn.ReLU(),
+			nn.LeakyReLU(negative_slope=0.01),
 			nn.Dropout(dropout)
 		)
 		
@@ -324,11 +347,11 @@ class CFOEstimationHead(nn.Module):
 		self.regressor = nn.Sequential(
 			nn.Linear(input_dim, hidden_dim),    # (B, input_dim) -> (B, hidden_dim)
 			nn.LayerNorm(hidden_dim),
-			nn.ReLU(),
+			nn.LeakyReLU(negative_slope=0.01),
 			nn.Dropout(dropout),
 			nn.Linear(hidden_dim, hidden_dim//2), # (B, hidden_dim) -> (B, hidden_dim//2)
 			nn.LayerNorm(hidden_dim//2),
-			nn.ReLU(),
+			nn.LeakyReLU(negative_slope=0.01),
 			nn.Dropout(dropout),
 			nn.Linear(hidden_dim//2, 1),          # (B, hidden_dim//2) -> (B, 1)
 			nn.Tanh()                             # Bound output to [-1, 1]

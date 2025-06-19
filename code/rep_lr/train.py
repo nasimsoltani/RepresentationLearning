@@ -80,6 +80,8 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                             labels = labels.long()
                         else:
                             labels = labels.float()
+
+                        
                         
                         outputs = model['heads'][task](encoded)
                         task_loss = loss_fn[task](outputs, labels)
@@ -138,20 +140,21 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                             labels = labels.float()
 
                         optimizer.zero_grad()
-                        
+
                         projection, encoder, task_head = model
                         x = projection(inputs)
                         x = encoder(x)
                         outputs = task_head(x)
 
                         loss = loss_fn(outputs, labels)
-
+                        
                         if torch.isnan(loss) or not isinstance(loss.item(), float):
                             print(f"Warning: NaN loss detected in batch {batch_idx}, skipping...")
                             continue
 
                         loss.backward()
-                        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                        
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
                         optimizer.step()
 
                         train_loss += loss.item()
