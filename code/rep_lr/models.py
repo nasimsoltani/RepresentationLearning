@@ -152,7 +152,7 @@ class Encoder(nn.Module):
 		self.relu = nn.LeakyReLU(negative_slope=0.01)
 		
 		# Calculate the size after all pooling operations
-		conv_output_size = channel * (slice_size // (2**3))
+		conv_output_size = channel * (slice_size // (2**5))
 		
 		# Final MLP layers
 		self.classifier = nn.Sequential(
