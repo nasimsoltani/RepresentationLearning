@@ -11,7 +11,7 @@ import pickle
 import random
 import re
 
-from models import (ComplexSequenceProjector, Encoder, 
+from models import (ComplexSequenceProjector, UpsamplingProjector, Encoder, 
                    RFClassificationHead, ChannelEstimationHead, CFOEstimationHead)
 from py_datasets import TrainDataset
 from torch.utils.data import DataLoader
@@ -546,9 +546,13 @@ def main():
     else:
         print("Reconstructing single-task model architecture.")
         task_name = train_args.task
-        seq_len = train_args.slice_len if task_name == 'rf_fingerprinting' else 160
         
-        projection = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
+        # Create projection layer based on task
+        if task_name == 'cfo_estimation':
+            projection = UpsamplingProjector(output_seq_len=train_args.proj_seq_len)
+        else:
+            seq_len = train_args.slice_len if task_name == 'rf_fingerprinting' else 160
+            projection = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
         
         encoder = Encoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout)
 
@@ -580,7 +584,17 @@ def main():
     else:
         # Single-task models saved as a single state dict
         if 'model_state_dict' in checkpoint: 
-            model.load_state_dict(checkpoint['model_state_dict'])
+            model_state_dict = checkpoint['model_state_dict']
+            
+            # For CFO estimation with UpsamplingProjector, filter out projection keys since it has no parameters
+            if train_args.task == 'cfo_estimation':
+                filtered_state_dict = {}
+                for key, value in model_state_dict.items():
+                    if not key.startswith('projection.'):
+                        filtered_state_dict[key] = value
+                model.load_state_dict(filtered_state_dict, strict=False)
+            else:
+                model.load_state_dict(model_state_dict)
         
         # Format for models where each module is saved separately
         elif 'projection_state_dict' in checkpoint and 'encoder_state_dict' in checkpoint and 'head_state_dict' in checkpoint:
