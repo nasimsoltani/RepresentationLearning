@@ -136,8 +136,9 @@ class ActivationDataset(Dataset):
 
         for file_path in fim_files:
             data = torch.load(file_path, map_location=self.device)
-            z = data['activation'].squeeze(0)
-            if z.dim() == 1: z = z.unsqueeze(0)
+            # Load activation and ensure it has proper batch dimension
+            z = data['activation'].squeeze(0)  # Remove any extra dimensions: (1, 2, 256) -> (2, 256)
+            z = z.view(1, -1)  # Flatten to (1, 512) for task head input
             z.requires_grad_(True)
 
             try:
@@ -149,15 +150,22 @@ class ActivationDataset(Dataset):
             task_head.zero_grad()
             y_hat = task_head(z)
             
-            if task_name == 'rf_fingerprinting': y_target = y_target.long()
-            elif task_name == 'cfo_estimation': y_target = y_target.unsqueeze(-1)
+            if task_name == 'rf_fingerprinting': 
+                y_target = y_target.long()
+            elif task_name == 'cfo_estimation': 
+                # CFO head outputs (1, 1), so target should also be (1, 1)
+                if y_target.dim() == 0: y_target = y_target.unsqueeze(0).unsqueeze(0)  # scalar -> (1, 1)
+                elif y_target.dim() == 1: y_target = y_target.unsqueeze(0)  # (1,) -> (1, 1)
+            elif task_name == 'channel_estimation':
+                # Channel head outputs (1, 2, 52), so target should also have batch dimension
+                if y_target.dim() == 2: y_target = y_target.unsqueeze(0)  # (2, 52) -> (1, 2, 52)
 
             loss = criterion(y_hat, y_target)
             loss.backward()
 
             if z.grad is not None:
-                J = z.grad
-                fim += J.T @ J
+                J = z.grad.view(-1)  # Flatten gradient to 1D: (1, 512) -> (512,)
+                fim += torch.outer(J, J)  # Outer product: (512,) x (512,) -> (512, 512)
                 num_samples += z.size(0)
         
         return fim / num_samples if num_samples > 0 else fim
@@ -169,12 +177,19 @@ class ActivationDataset(Dataset):
         """
         if task_name == 'rf_fingerprinting':
             if 'rf_label' not in data: raise KeyError("'rf_label' not found in data file.")
-            return data['rf_label']
+            # Keep batch dimension for CrossEntropyLoss: [1] -> [1]
+            label = data['rf_label'].squeeze()
+            if label.dim() == 0: label = label.unsqueeze(0)  # [] -> [1]
+            return label
         elif task_name == 'cfo_estimation':
             if 'cfo_label' not in data: raise KeyError("'cfo_label' not found in data file.")
-            return data['cfo_label']
+            # CFO label: convert to float32 and ensure proper shape for MSELoss
+            label = data['cfo_label'].squeeze().float()  # Convert to float32
+            return label
         elif task_name == 'channel_estimation':
-            return data['Channel_X'].squeeze(0)
+            if 'channel_label' not in data: raise KeyError("'channel_label' not found in data file.")
+            # Channel label: use the actual channel labels, not input
+            return data['channel_label'].squeeze(0)
         else:
             raise ValueError(f"Unknown task for target retrieval: {task_name}")
 
@@ -182,18 +197,16 @@ class ActivationDataset(Dataset):
         """Generates anisotropic noise based on the FIM's eigenspectrum."""
         if self.noise_level == 0.0: return torch.zeros_like(z)
         
+        # Store original shape and flatten z for noise generation
+        original_shape = z.shape
+        z_flat = z.view(-1)  # Flatten to match FIM dimensions
+        
         aniso_variances = self.noise_level / (self.L.to(z.device) + 1e-6)
-        V = self.V.to(z.device)
-        Omega = torch.diag(aniso_variances)
-        aniso_cov = V @ Omega @ V.T
-
-        try:
-            scale_tril = torch.linalg.cholesky(aniso_cov)
-            noise = (scale_tril @ torch.randn_like(z).T).T
-        except torch.linalg.LinAlgError:
-            Omega_sqrt = torch.diag(torch.sqrt(aniso_variances))
-            noise = (V @ Omega_sqrt @ torch.randn_like(z).T).T
-        return noise
+        scale_tril = torch.diag(torch.sqrt(aniso_variances))
+        noise_flat = (scale_tril @ torch.randn_like(z_flat).unsqueeze(-1)).squeeze(-1)
+        
+        # Reshape back to original activation shape
+        return noise_flat.view(original_shape)
 
     def _get_isotropic_noise(self, z):
         """Generates isotropic noise with the same total power as the anisotropic noise."""
@@ -227,6 +240,6 @@ class ActivationDataset(Dataset):
             'CFO_X': data['CFO_X'].squeeze(0),
             'Channel_X': data['Channel_X'].squeeze(0),
             'filename': data['filename'],
-            'rf_label': data.get('rf_label', -1),
-            'cfo_label': data.get('cfo_label', -1)
+            'rf_label': data.get('rf_label', torch.tensor(-1)).squeeze(),
+            'cfo_label': data.get('cfo_label', torch.tensor(-1.0)).squeeze()
         } 

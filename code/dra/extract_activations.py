@@ -150,7 +150,7 @@ def extract_activations(cli_args):
 
     with torch.no_grad():
         for batch in tqdm(data_loader, desc="Extracting Activations"):
-            rf_inputs, _, cfo_inputs, _, channel_inputs, _, file_paths = batch
+            rf_inputs, rf_labels, cfo_inputs, cfo_labels, channel_inputs, channel_labels, file_paths = batch
             
             filename = os.path.basename(file_paths[0])
             save_path = os.path.join(output_dir, filename.replace('.mat', '.pth'))
@@ -204,7 +204,10 @@ def extract_activations(cli_args):
                 'filename': filename,
                 'RF_X': rf_inputs.detach().cpu(),
                 'CFO_X': cfo_inputs.detach().cpu(),
-                'Channel_X': channel_inputs.detach().cpu()
+                'Channel_X': channel_inputs.detach().cpu(),
+                'rf_label': rf_labels.detach().cpu(),
+                'cfo_label': cfo_labels.detach().cpu(),
+                'channel_label': channel_labels.detach().cpu()
             }
             torch.save(data_to_save, save_path)
 

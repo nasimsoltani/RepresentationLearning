@@ -161,4 +161,6 @@ partitions['max_cfo'] = max_cfo
 with open (rf_pkl_path, 'wb') as handle:
 	pickle.dump(partitions,handle)
 
+print(f"saved to {rf_pkl_path}")
+
 
