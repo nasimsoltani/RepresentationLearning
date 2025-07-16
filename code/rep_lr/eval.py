@@ -574,11 +574,32 @@ def main():
         model['encoder'].load_state_dict(checkpoint['encoder_state_dict'])
         model['heads'].load_state_dict(checkpoint['heads_state_dict'])
     else:
-        if 'module_0' in checkpoint:
-            for i, module in enumerate(model):
-                module.load_state_dict(checkpoint[f'module_{i}'])
-        elif 'model_state_dict' in checkpoint: # Legacy format
-            model.load_state_dict(checkpoint['model_state_dict'])
+        # Legacy format for single-task models saved as a single state dict
+        if 'model_state_dict' in checkpoint: 
+            model_state_dict = checkpoint['model_state_dict']
+            
+            # Create a new state dict with the correct keys
+            new_state_dict = {}
+            for key, value in model_state_dict.items():
+                if key.startswith('projection.'):
+                    new_key = '0.' + key[len('projection.'):]
+                elif key.startswith('encoder.'):
+                    new_key = '1.' + key[len('encoder.'):]
+                elif key.startswith('head.'):
+                    new_key = '2.' + key[len('head.'):]
+                else:
+                    # If the key format is already correct (e.g. '0.real_projector...'), use it as is
+                    new_key = key
+                new_state_dict[new_key] = value
+            
+            model.load_state_dict(new_state_dict)
+        
+        # Format for models where each module is saved separately
+        elif 'projection_state_dict' in checkpoint and 'encoder_state_dict' in checkpoint and 'head_state_dict' in checkpoint:
+            model[0].load_state_dict(checkpoint['projection_state_dict'])
+            model[1].load_state_dict(checkpoint['encoder_state_dict'])
+            model[2].load_state_dict(checkpoint['head_state_dict'])
+        
         else:
             raise KeyError("Could not find model weights in a recognized format in the checkpoint.")
 
