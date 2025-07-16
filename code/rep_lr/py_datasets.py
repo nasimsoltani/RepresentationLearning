@@ -127,7 +127,8 @@ class TrainDataset(Dataset):
 
 			#print(RF_X.shape, RF_y, CFO_y.shape, Channel_X.shape, Channel_y.shape)
 			
-			CFO_y = (CFO_y - self.mean_cfo)/self.std_cfo
+			#CFO_y = (CFO_y - self.mean_cfo)/self.std_cfo
+			#print(CFO_y)
 
 			return RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y, file_path
 
@@ -155,7 +156,8 @@ class TrainDataset(Dataset):
 
 			#CFO_y = CFO_y/self.max_cfo
 			
-			CFO_y = (CFO_y - self.mean_cfo)/self.std_cfo
+			#CFO_y = (CFO_y - self.mean_cfo)/self.std_cfo
+			print(CFO_y)
 
 
 			return RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y, file_path

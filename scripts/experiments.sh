@@ -150,7 +150,7 @@ python code/rep_lr/main.py \
 # # 7. Multi-Task (MTL): RF + CFO + Channel
 # # =================================================================================
 # echo "--- Starting MTL: RF Fingerprinting + CFO Estimation + Channel Estimation ---"
-# python code/rep_lr/main.py \
+# uv run python code/rep_lr/main.py \
 #     --mtl \
 #     --task rf_fingerprinting cfo_estimation channel_estimation \
 #     --pkl_dataset_path $DATASET_PATH \

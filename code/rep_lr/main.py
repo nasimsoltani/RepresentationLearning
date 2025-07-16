@@ -13,7 +13,7 @@ import torch.nn as nn
 import torch.optim
 from torch.utils.data import Dataset, DataLoader, random_split
 from py_datasets import TrainDataset
-from models import (ComplexSequenceProjector, Encoder, 
+from models import (ComplexSequenceProjector, UpsamplingProjector, Encoder, 
                    RFClassificationHead, ChannelEstimationHead, CFOEstimationHead)
 
 import warnings
@@ -63,7 +63,7 @@ def main():
     parser.add_argument('--save_path', type=str, default='results', help='Base directory to save results.')
     parser.add_argument('--resume_from', type=str, default=None, help='Path to checkpoint to resume training from.')
     parser.add_argument('--save_epochs', type=int, default=10, help='Save checkpoint every N epochs. 0 to disable.')
-    parser.add_argument('--patience', type=int, default=20, help='Patience for early stopping.')
+    parser.add_argument('--patience', type=int, default=5, help='Patience for early stopping.')
     parser.add_argument('--wandb_project', type=str, default='representation-learning-lab', help='WandB project name.')
     parser.add_argument('--wandb_entity', type=str, default=None, help='WandB entity.')
 
@@ -156,9 +156,10 @@ def main():
 
             elif task == 'cfo_estimation':
                 seq_len = 160
-                projections[task] = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=args.proj_seq_len, hidden_dim=args.proj_hidden_dim)
+                # Use UpsamplingProjector for CFO to preserve sequence structure
+                projections[task] = UpsamplingProjector(output_seq_len=args.proj_seq_len)
                 heads[task] = CFOEstimationHead(input_dim=2*args.d2, hidden_dim=args.head_hidden_dim, dropout=args.dropout)
-                loss_fns[task] = nn.MSELoss()
+                loss_fns[task] = nn.HuberLoss()
 
         encoder = Encoder(slice_size=args.proj_seq_len, output_dim=args.d2, dropout=args.dropout)
         
@@ -181,11 +182,14 @@ def main():
     else:
         # Single-Task Learning Setup
         print(f"Setting up Single-Task Learning model for {args.task}.")
+        
         # Create projection layer
-        seq_len = args.slice_len if args.task == 'rf_fingerprinting' else 160
-        
-        projection = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=args.proj_seq_len, hidden_dim=args.proj_hidden_dim)
-        
+        if args.task == 'cfo_estimation':
+            projection = UpsamplingProjector(output_seq_len=args.proj_seq_len)
+        else:
+            seq_len = args.slice_len if args.task == 'rf_fingerprinting' else 160
+            projection = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=args.proj_seq_len, hidden_dim=args.proj_hidden_dim)
+
         # Create encoder (common for all tasks)
         encoder = Encoder(slice_size=args.proj_seq_len, output_dim=args.d2, dropout=args.dropout)
 
@@ -219,14 +223,18 @@ def main():
                 hidden_dim=args.head_hidden_dim,
                 dropout=args.dropout
             )
-            loss_fn = nn.MSELoss()
+            loss_fn = nn.HuberLoss()
             
         else:
             raise ValueError(f"Unknown task: {args.task}")
 
-        model = nn.ModuleList([projection, encoder, task_head])
+        model = nn.ModuleDict({
+            'projection': projection,
+            'encoder': encoder,
+            'head': task_head
+        })
         
-        total_params = count_parameters(projection) + count_parameters(encoder) + count_parameters(task_head)
+        total_params = count_parameters(model)
         print("\nModel Architecture Details:")
         print(f"Projection Parameters: {count_parameters(projection):,}")
         print(f"Encoder Parameters: {count_parameters(encoder):,}")
@@ -250,11 +258,14 @@ def main():
                 model['encoder'].load_state_dict(checkpoint['encoder_state_dict'])
                 model['heads'].load_state_dict(checkpoint['heads_state_dict'])
             else:
-                if 'model_state_dict' in checkpoint: # Handle old single-task checkpoints
-                    model.load_state_dict(checkpoint['model_state_dict'])
-                else: # Handle new single-task checkpoints (saved as ModuleList components)
-                    for i, module in enumerate(model):
-                        module.load_state_dict(checkpoint[f'module_{i}'])
+                # Load the entire model's state_dict for ModuleDict
+                model.load_state_dict(checkpoint['model_state_dict'])
+
+            # Restore optimizer and scheduler states
+            if 'optimizer_state_dict' in checkpoint:
+                optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            if 'scheduler_state_dict' in checkpoint:
+                scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
             print("Checkpoint loaded.")
         else:
             print(f"Checkpoint not found at '{args.resume_from}'. Training from scratch.")

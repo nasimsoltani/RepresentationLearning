@@ -62,8 +62,8 @@ def test_dataset(args):
 if __name__ == '__main__':
     # --- Base Arguments ---
     base_args = argparse.Namespace(
-        activations_dir='/scratch/10608/aadharsh_aadhithya/data/rep_lr/activations/train',
-        model_path='/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250625_204601/rf_cfo_channel/rf_fingerprinting_cfo_estimation_channel_estimation_20250626_090411/rf_fingerprinting_cfo_estimation_channel_estimation_best.pt',
+        activations_dir='/home/hofmann/Documents/projects/RepresentationLearning/dataset/activations/train',
+        model_path='/home/hofmann/Documents/projects/RepresentationLearning/results_20250715_202527/rf_cfo_channel/rf_fingerprinting_cfo_estimation_channel_estimation_20250715_202529/rf_fingerprinting_cfo_estimation_channel_estimation_best.pt',
         gpu_id=0,
         batch_size=4
     )
