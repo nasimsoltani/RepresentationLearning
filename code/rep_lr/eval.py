@@ -19,7 +19,9 @@ from torch.utils.data import DataLoader
 def evaluate_rf_fingerprinting(model, test_dl, device, output_dir, class_names, args):
     is_mtl = getattr(args, 'mtl', False)
     if not is_mtl:
-        projection, encoder, task_head = model
+        projection = model['projection']
+        encoder = model['encoder']
+        task_head = model['head']
 
     y_true = []
     y_pred = []
@@ -167,7 +169,9 @@ def plot_distance_vs_accuracy(predictions_path):
 def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, mean_cfo, std_cfo, args):
     is_mtl = getattr(args, 'mtl', False)
     if not is_mtl:
-        projection, encoder, task_head = model
+        projection = model['projection']
+        encoder = model['encoder']
+        task_head = model['head']
     
     y_true = []
     y_pred = []
@@ -285,7 +289,9 @@ def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, mean_cf
 def evaluate_channel_estimation(model, test_dl, device, output_dir, args):
     is_mtl = getattr(args, 'mtl', False)
     if not is_mtl:
-        projection, encoder, task_head = model
+        projection = model['projection']
+        encoder = model['encoder']
+        task_head = model['head']
     
     all_y_true = []
     all_y_pred = []
@@ -561,7 +567,11 @@ def main():
         else:
             raise ValueError(f"Unknown task: {task_name}")
 
-        model = torch.nn.ModuleList([projection, encoder, task_head])
+        model = torch.nn.ModuleDict({
+            'projection': projection,
+            'encoder': encoder,
+            'head': task_head
+        })
 
     model.to(device)
 
@@ -597,7 +607,7 @@ def main():
         if is_mtl:
             task_head = model['heads'][task]
         else:
-            task_head = model[2]
+            task_head = model['head']
 
         task_valid = False
         if task == 'rf_fingerprinting' and isinstance(task_head, RFClassificationHead):

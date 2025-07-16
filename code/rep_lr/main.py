@@ -63,7 +63,7 @@ def main():
     parser.add_argument('--save_path', type=str, default='results', help='Base directory to save results.')
     parser.add_argument('--resume_from', type=str, default=None, help='Path to checkpoint to resume training from.')
     parser.add_argument('--save_epochs', type=int, default=10, help='Save checkpoint every N epochs. 0 to disable.')
-    parser.add_argument('--patience', type=int, default=5, help='Patience for early stopping.')
+    parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping.')
     parser.add_argument('--wandb_project', type=str, default='representation-learning-lab', help='WandB project name.')
     parser.add_argument('--wandb_entity', type=str, default=None, help='WandB entity.')
 
