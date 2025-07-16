@@ -173,7 +173,7 @@ def extract_activations(cli_args):
                     if task_name == 'rf_fingerprinting':
                         # MTL eval logic for RF averages projections across slices
                         
-                        proj = model_projections[task_name](inputs)
+                        proj = model_projections[task_name](inputs.squeeze(0))
                         projected_tensors.append(proj.mean(dim=0, keepdim=True))
                     else:
                         projected_tensors.append(model_projections[task_name](inputs))
