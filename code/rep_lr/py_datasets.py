@@ -86,12 +86,14 @@ def read_file(file_path, max_cfo):
 
 
 class TrainDataset(Dataset):
-	def __init__(self, file_list, class_ids, args, max_cfo, test_mode=False):
+	def __init__(self, file_list, class_ids, args, max_cfo, mean_cfo, std_cfo, test_mode=False):
 
 		self.file_list = file_list
 		self.class_ids = class_ids
 		self.args = args
 		self.max_cfo = max_cfo
+		self.mean_cfo = mean_cfo
+		self.std_cfo = std_cfo
 		self.test_mode = test_mode
 		
 		# shuffle the file list
@@ -103,29 +105,60 @@ class TrainDataset(Dataset):
 
 	def __getitem__(self, index):
 
-		file_path = self.file_list[index]
-		[RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y]  = read_file(file_path, self.max_cfo)
-		
-		if self.test_mode:
-			# In test mode, we create sliding window slices of RF_X for evaluation.
-			if RF_X.shape[1] >= self.args.slice_len:
-				# Use unfold for efficient slicing
-				RF_X = RF_X.unfold(1, self.args.slice_len, 1).permute(1, 0, 2)
+		try:
+
+			file_path = self.file_list[index]
+			[RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y]  = read_file(file_path, self.max_cfo)
+			
+			if self.test_mode:
+				# In test mode, we create sliding window slices of RF_X for evaluation.
+				if RF_X.shape[1] >= self.args.slice_len:
+					# Use unfold for efficient slicing
+					RF_X = RF_X.unfold(1, self.args.slice_len, 1).permute(1, 0, 2)
+				else:
+					# Pad if the sequence is shorter than slice_len
+					padded_RF_X = torch.zeros((RF_X.shape[0], self.args.slice_len))
+					padded_RF_X[:, :RF_X.shape[1]] = RF_X
+					RF_X = padded_RF_X.unsqueeze(0)
 			else:
-				# Pad if the sequence is shorter than slice_len
-				padded_RF_X = torch.zeros((RF_X.shape[0], self.args.slice_len))
-				padded_RF_X[:, :RF_X.shape[1]] = RF_X
-				RF_X = padded_RF_X.unsqueeze(0)
-		else:
-			""" slice only the RF_X """
-			slice_index = random.randint(0, RF_X.shape[1] - self.args.slice_len)  # pick a random index from which a slice starts
-			RF_X = RF_X[:, slice_index:slice_index+self.args.slice_len]    # pick the slice with determined length and create X (input)
+				""" slice only the RF_X """
+				slice_index = random.randint(0, RF_X.shape[1] - self.args.slice_len)  # pick a random index from which a slice starts
+				RF_X = RF_X[:, slice_index:slice_index+self.args.slice_len]    # pick the slice with determined length and create X (input)
 
-		#print(RF_X.shape, RF_y, CFO_y.shape, Channel_X.shape, Channel_y.shape)
-		
-		CFO_y = CFO_y/self.max_cfo
+			#print(RF_X.shape, RF_y, CFO_y.shape, Channel_X.shape, Channel_y.shape)
+			
+			CFO_y = (CFO_y - self.mean_cfo)/self.std_cfo
 
-		return RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y, file_path
+			return RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y, file_path
+
+		except Exception as e:
+			print(f"Error: {e}")
+			file_path = self.file_list[0]
+			[RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y]  = read_file(file_path, self.max_cfo)
+			
+			if self.test_mode:
+				# In test mode, we create sliding window slices of RF_X for evaluation.
+				if RF_X.shape[1] >= self.args.slice_len:
+					# Use unfold for efficient slicing
+					RF_X = RF_X.unfold(1, self.args.slice_len, 1).permute(1, 0, 2)
+				else:
+					# Pad if the sequence is shorter than slice_len
+					padded_RF_X = torch.zeros((RF_X.shape[0], self.args.slice_len))
+					padded_RF_X[:, :RF_X.shape[1]] = RF_X
+					RF_X = padded_RF_X.unsqueeze(0)
+			else:
+				""" slice only the RF_X """
+				slice_index = random.randint(0, RF_X.shape[1] - self.args.slice_len)  # pick a random index from which a slice starts
+				RF_X = RF_X[:, slice_index:slice_index+self.args.slice_len]    # pick the slice with determined length and create X (input)
+
+			#print(RF_X.shape, RF_y, CFO_y.shape, Channel_X.shape, Channel_y.shape)
+
+			#CFO_y = CFO_y/self.max_cfo
+			
+			CFO_y = (CFO_y - self.mean_cfo)/self.std_cfo
+
+
+			return RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y, file_path
 
 
 

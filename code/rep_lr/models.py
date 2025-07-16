@@ -170,11 +170,11 @@ class Encoder(nn.Module):
 		self.relu = nn.LeakyReLU(negative_slope=0.01)
 		
 		# SE Blocks
-		self.se1 = SEBlock(channel)
-		self.se2 = SEBlock(channel)
-		self.se3 = SEBlock(channel)
-		self.se4 = SEBlock(channel)
-		self.se5 = SEBlock(channel)
+		# self.se1 = SEBlock(channel)
+		# self.se2 = SEBlock(channel)
+		# self.se3 = SEBlock(channel)
+		# self.se4 = SEBlock(channel)
+		# self.se5 = SEBlock(channel)
 		
 		# Calculate the size after all pooling operations
 		conv_output_size = channel * (slice_size // (2**5))
@@ -218,14 +218,14 @@ class Encoder(nn.Module):
 		# Block 1
 		x = self.relu(self.bn0(self.conv0(x)))  # shape: (B, 64, L)
 		x = self.relu(self.bn1(self.conv1(x)))  # shape: (B, 64, L)
-		x = self.se1(x)
+		# x = self.se1(x)
 		x = self.pool1(x)  # shape: (B, 64, L/2)
 		
 		# Block 2 with residual
 		residual = x
 		x = self.relu(self.bn2(self.conv2(x)))  # shape: (B, 64, L/2)
 		x = self.bn3(self.conv3(x))
-		x = self.se2(x)
+		#x = self.se2(x)
 		x = self.relu(x + residual)
 		x = self.pool1(x)  # shape: (B, 64, L/4)
 		
@@ -233,7 +233,7 @@ class Encoder(nn.Module):
 		residual = x
 		x = self.relu(self.bn4(self.conv4(x)))  # shape: (B, 64, L/4)
 		x = self.bn5(self.conv5(x))
-		x = self.se3(x)
+		#x = self.se3(x)
 		x = self.relu(x + residual)
 		x = self.pool1(x)  # shape: (B, 64, L/8)
 		
@@ -241,7 +241,7 @@ class Encoder(nn.Module):
 		residual = x
 		x = self.relu(self.bn6(self.conv6(x)))  # shape: (B, 64, L/8)
 		x = self.bn7(self.conv7(x))
-		x = self.se4(x)
+		#x = self.se4(x)
 		x = self.relu(x + residual)
 		x = self.pool1(x)  # shape: (B, 64, L/16)
 		
@@ -249,7 +249,7 @@ class Encoder(nn.Module):
 		residual = x
 		x = self.relu(self.bn8(self.conv8(x)))  # shape: (B, 64, L/16)
 		x = self.bn9(self.conv9(x))
-		x = self.se5(x)
+		#x = self.se5(x)
 		x = self.relu(x + residual)
 		x = self.pool1(x)  # shape: (B, 64, L/32)
 		
@@ -389,16 +389,27 @@ class CFOEstimationHead(nn.Module):
 		
 		self.regressor = nn.Sequential(
 			nn.Linear(input_dim, hidden_dim),    # (B, input_dim) -> (B, hidden_dim)
-			nn.LayerNorm(hidden_dim),
+			#nn.LayerNorm(hidden_dim),
+			#nn.ELU(),
 			nn.LeakyReLU(negative_slope=0.01),
 			nn.Dropout(dropout),
 			nn.Linear(hidden_dim, hidden_dim//2), # (B, hidden_dim) -> (B, hidden_dim//2)
-			nn.LayerNorm(hidden_dim//2),
+			#nn.LayerNorm(hidden_dim//2),
+			#nn.ELU(),
 			nn.LeakyReLU(negative_slope=0.01),
+		
 			nn.Dropout(dropout),
 			nn.Linear(hidden_dim//2, 1),          # (B, hidden_dim//2) -> (B, 1)
-			nn.Tanh()                             # Bound output to [-1, 1]
+			#nn.Tanh()                             # Bound output to [-1, 1]
+			#output is unbounded
+			
 		)
+		# Add proper initialization
+		for m in self.modules():
+			if isinstance(m, nn.Linear):
+				nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='leaky_relu')
+				if m.bias is not None:
+					nn.init.constant_(m.bias, 0)
 	
 	def forward(self, x):
 		"""

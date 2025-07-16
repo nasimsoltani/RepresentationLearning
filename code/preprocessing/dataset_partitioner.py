@@ -4,6 +4,7 @@ import pickle
 from scipy.io import loadmat
 from dotenv import load_dotenv
 import os
+import numpy as np
 
 # Load environment variables
 load_dotenv()
@@ -136,12 +137,26 @@ with open (channel_pkl_path, 'wb') as handle:
 with open (rf_pkl_path, 'rb') as handle:
 	partitions = pickle.load(handle)
 
-max_cfo = 0
+# max_cfo = 0
+# train_list = partitions['train']
+# for file_path in train_list:
+# 	output_cfo = read_file(file_path)
+# 	max_cfo = max(max_cfo , abs(output_cfo))
+
+
+#calculate mean and std of CFO
+cfo_list = []
 train_list = partitions['train']
 for file_path in train_list:
 	output_cfo = read_file(file_path)
-	max_cfo = max(max_cfo , abs(output_cfo))
-	
+	cfo_list.append(output_cfo)
+
+mean_cfo = np.mean(cfo_list)
+std_cfo = np.std(cfo_list)
+max_cfo = np.max(np.abs(cfo_list))
+
+partitions['mean_cfo'] = mean_cfo
+partitions['std_cfo'] = std_cfo
 partitions['max_cfo'] = max_cfo
 with open (rf_pkl_path, 'wb') as handle:
 	pickle.dump(partitions,handle)

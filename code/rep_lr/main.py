@@ -109,12 +109,14 @@ def main():
     train_list = content['train']
     val_list = content['val']
     max_cfo = content['max_cfo']
+    mean_cfo = content['mean_cfo']
+    std_cfo = content['std_cfo']
 
 
     
     dataset_args = argparse.Namespace(slice_len=args.slice_len)
-    train_dataset = TrainDataset(train_list, ID_class_dict, dataset_args, max_cfo)
-    val_dataset = TrainDataset(val_list, ID_class_dict, dataset_args, max_cfo)
+    train_dataset = TrainDataset(train_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo)
+    val_dataset = TrainDataset(val_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo)
 
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
     val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, pin_memory=True)

@@ -164,7 +164,7 @@ def plot_distance_vs_accuracy(predictions_path):
     print(f"Distance vs. accuracy plot saved to {plot_path}")
     plt.close()
 
-def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, args):
+def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, mean_cfo, std_cfo, args):
     is_mtl = getattr(args, 'mtl', False)
     if not is_mtl:
         projection, encoder, task_head = model
@@ -217,28 +217,39 @@ def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, args):
                 'filename': filename,
                 'y_true_normalized': true_val,
                 'y_pred_normalized': pred_val,
-                'y_true_real': true_val * max_cfo,
-                'y_pred_real': pred_val * max_cfo,
+                'y_true_real': true_val * std_cfo + mean_cfo,
+                'y_pred_real': pred_val * std_cfo + mean_cfo,
             })
             
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
     
     # De-normalize predictions and ground truth
-    y_true_real = y_true * max_cfo
-    y_pred_real = y_pred * max_cfo
+    # y_true_real = y_true * max_cfo
+    # y_pred_real = y_pred * max_cfo
+    y_true_real = y_true * std_cfo + mean_cfo
+    y_pred_real = y_pred * std_cfo + mean_cfo
     
     # Calculate metrics
     mae = mean_absolute_error(y_true_real, y_pred_real)
     mse = mean_squared_error(y_true_real, y_pred_real)
     rmse = np.sqrt(mse)
     r2 = r2_score(y_true_real, y_pred_real)
+
+    #calculate normalized error
+    mae_normalized = mean_absolute_error(y_true, y_pred)
+    mse_normalized = mean_squared_error(y_true, y_pred)
+    #rmse_normalized = np.sqrt(mse_normalized)
+    r2_normalized = r2_score(y_true, y_pred)
     
     metrics = {
         'mae': float(mae),
         'mse': float(mse),
         'rmse': float(rmse),
-        'r2_score': float(r2)
+        'r2_score': float(r2),
+        'mae_normalized': float(mae_normalized),
+        'mse_normalized': float(mse_normalized),
+        'r2_normalized': float(r2_normalized)
     }
     
     print("\nCFO Estimation Metrics:")
@@ -481,6 +492,8 @@ def main():
         content = pickle.load(handle)
     test_list = content['test']
     max_cfo = content['max_cfo']
+    mean_cfo = content['mean_cfo']
+    std_cfo = content['std_cfo']
     
     # Shuffle and subset the test set
     random.shuffle(test_list)
@@ -495,7 +508,7 @@ def main():
         ID_class_dict[this_key] = i
     num_classes = len(list(ID_class_dict.keys()))
 
-    test_dataset = TrainDataset(test_list, ID_class_dict, train_args, max_cfo, test_mode=True)
+    test_dataset = TrainDataset(test_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, test_mode=True)
     # Use batch_size=1 for test loader because of variable number of slices
     test_dl = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
 
@@ -601,7 +614,7 @@ def main():
         if task == 'rf_fingerprinting':
             evaluate_rf_fingerprinting(model, test_dl, device, model_dir, list(ID_class_dict.keys()), train_args)
         elif task == 'cfo_estimation':
-            evaluate_cfo_estimation(model, test_dl, device, model_dir, max_cfo, train_args)
+            evaluate_cfo_estimation(model, test_dl, device, model_dir, max_cfo, mean_cfo, std_cfo, train_args)
         elif task == 'channel_estimation':
             evaluate_channel_estimation(model, test_dl, device, model_dir, train_args)
 
