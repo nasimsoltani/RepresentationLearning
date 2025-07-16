@@ -19,9 +19,13 @@ from torch.utils.data import DataLoader
 def evaluate_rf_fingerprinting(model, test_dl, device, output_dir, class_names, args):
     is_mtl = getattr(args, 'mtl', False)
     if not is_mtl:
+<<<<<<< HEAD
         projection = model['projection']
         encoder = model['encoder']
         task_head = model['head']
+=======
+        projection, encoder, task_head = model['projection'], model['encoder'], model['head']
+>>>>>>> 94b2af597ca011577750002016092fdfb8f270fe
 
     y_true = []
     y_pred = []
@@ -169,9 +173,13 @@ def plot_distance_vs_accuracy(predictions_path):
 def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, mean_cfo, std_cfo, args):
     is_mtl = getattr(args, 'mtl', False)
     if not is_mtl:
+<<<<<<< HEAD
         projection = model['projection']
         encoder = model['encoder']
         task_head = model['head']
+=======
+        projection, encoder, task_head = model['projection'], model['encoder'], model['head']
+>>>>>>> 94b2af597ca011577750002016092fdfb8f270fe
     
     y_true = []
     y_pred = []
@@ -289,9 +297,8 @@ def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, mean_cf
 def evaluate_channel_estimation(model, test_dl, device, output_dir, args):
     is_mtl = getattr(args, 'mtl', False)
     if not is_mtl:
-        projection = model['projection']
-        encoder = model['encoder']
-        task_head = model['head']
+        projection, encoder, task_head = model['projection'], model['encoder'], model['head']
+
     
     all_y_true = []
     all_y_pred = []
@@ -584,31 +591,15 @@ def main():
         model['encoder'].load_state_dict(checkpoint['encoder_state_dict'])
         model['heads'].load_state_dict(checkpoint['heads_state_dict'])
     else:
-        # Legacy format for single-task models saved as a single state dict
+        # Single-task models saved as a single state dict
         if 'model_state_dict' in checkpoint: 
-            model_state_dict = checkpoint['model_state_dict']
-            
-            # Create a new state dict with the correct keys
-            new_state_dict = {}
-            for key, value in model_state_dict.items():
-                if key.startswith('projection.'):
-                    new_key = '0.' + key[len('projection.'):]
-                elif key.startswith('encoder.'):
-                    new_key = '1.' + key[len('encoder.'):]
-                elif key.startswith('head.'):
-                    new_key = '2.' + key[len('head.'):]
-                else:
-                    # If the key format is already correct (e.g. '0.real_projector...'), use it as is
-                    new_key = key
-                new_state_dict[new_key] = value
-            
-            model.load_state_dict(new_state_dict)
+            model.load_state_dict(checkpoint['model_state_dict'])
         
         # Format for models where each module is saved separately
         elif 'projection_state_dict' in checkpoint and 'encoder_state_dict' in checkpoint and 'head_state_dict' in checkpoint:
-            model[0].load_state_dict(checkpoint['projection_state_dict'])
-            model[1].load_state_dict(checkpoint['encoder_state_dict'])
-            model[2].load_state_dict(checkpoint['head_state_dict'])
+            model['projection'].load_state_dict(checkpoint['projection_state_dict'])
+            model['encoder'].load_state_dict(checkpoint['encoder_state_dict'])
+            model['head'].load_state_dict(checkpoint['head_state_dict'])
         
         else:
             raise KeyError("Could not find model weights in a recognized format in the checkpoint.")
