@@ -19,6 +19,27 @@ The classifier layer will classify the data.
 
 """
 
+class UpsamplingProjector(nn.Module):
+	def __init__(self, output_seq_len):
+		"""
+		Projects a sequence to a new length using linear interpolation,
+		which preserves the sequence's structure.
+		
+		Args:
+			output_seq_len (int): The desired length of the output sequence (L').
+		
+		Shape:
+			- Input: (B, 2, input_seq_len)
+			- Output: (B, 2, output_seq_len)
+		"""
+		super().__init__()
+		self.output_seq_len = output_seq_len
+
+	def forward(self, x):
+		# x shape: (B, 2, L)
+		return F.interpolate(x, size=self.output_seq_len, mode='linear', align_corners=False)
+
+
 class ComplexSequenceProjector(nn.Module):
 	def __init__(self, input_seq_len, output_seq_len, hidden_dim=512):
 		"""
@@ -167,7 +188,7 @@ class Encoder(nn.Module):
 
 		self.pool1 = nn.MaxPool1d(2,2)
 		self.flatten = nn.Flatten()
-		self.relu = nn.LeakyReLU(negative_slope=0.01)
+		self.relu = nn.LeakyReLU(negative_slope=0.1)
 		
 		# SE Blocks
 		# self.se1 = SEBlock(channel)
@@ -389,12 +410,12 @@ class CFOEstimationHead(nn.Module):
 		
 		self.regressor = nn.Sequential(
 			nn.Linear(input_dim, hidden_dim),    # (B, input_dim) -> (B, hidden_dim)
-			#nn.LayerNorm(hidden_dim),
+			nn.LayerNorm(hidden_dim),
 			#nn.ELU(),
 			nn.LeakyReLU(negative_slope=0.01),
 			nn.Dropout(dropout),
 			nn.Linear(hidden_dim, hidden_dim//2), # (B, hidden_dim) -> (B, hidden_dim//2)
-			#nn.LayerNorm(hidden_dim//2),
+			nn.LayerNorm(hidden_dim//2),
 			#nn.ELU(),
 			nn.LeakyReLU(negative_slope=0.01),
 		

@@ -141,10 +141,10 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
 
                         optimizer.zero_grad()
 
-                        projection, encoder, task_head = model
-                        x = projection(inputs)
-                        x = encoder(x)
-                        outputs = task_head(x)
+                        # Correctly access modules from the ModuleDict
+                        x = model['projection'](inputs)
+                        x = model['encoder'](x)
+                        outputs = model['head'](x)
 
                         loss = loss_fn(outputs, labels)
                         
@@ -158,6 +158,10 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                         optimizer.step()
 
                         train_loss += loss.item()
+
+
+                        if epoch>25:
+                            import pdb; pdb.set_trace()
 
                         #Log average of Y_true to wandb for debugging
                         wandb.log({'train/y_true_mean': torch.mean(labels).item()}, step=epoch)
@@ -267,10 +271,10 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                             else:
                                 labels = labels.float()
 
-                            projection, encoder, task_head = model
-                            x = projection(inputs)
-                            x = encoder(x)
-                            outputs = task_head(x)
+                            # Correctly access modules from the ModuleDict
+                            x = model['projection'](inputs)
+                            x = model['encoder'](x)
+                            outputs = model['head'](x)
 
                             loss = loss_fn(outputs, labels)
                             
@@ -317,8 +321,8 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                     checkpoint['encoder_state_dict'] = model['encoder'].state_dict()
                     checkpoint['heads_state_dict'] = model['heads'].state_dict()
                 else:
-                    for i, module in enumerate(model):
-                        checkpoint[f'module_{i}'] = module.state_dict()
+                    # Save the entire model's state_dict for ModuleDict
+                    checkpoint['model_state_dict'] = model.state_dict()
                 
                 save_path = os.path.join(args.save_path, f"{'_'.join(args.task) if args.mtl else args.task}_best.pt")
                 torch.save(checkpoint, save_path)
@@ -336,8 +340,8 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                     checkpoint['encoder_state_dict'] = model['encoder'].state_dict()
                     checkpoint['heads_state_dict'] = model['heads'].state_dict()
                 else:
-                    for i, module in enumerate(model):
-                        checkpoint[f'module_{i}'] = module.state_dict()
+                    # Save the entire model's state_dict for ModuleDict
+                    checkpoint['model_state_dict'] = model.state_dict()
                 
                 save_path = os.path.join(args.save_path, f"{'_'.join(args.task) if args.mtl else args.task}_epoch_{epoch+1}.pt")
                 torch.save(checkpoint, save_path)
@@ -360,7 +364,7 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
             elif isinstance(model, nn.ModuleList):
                 for i, module in enumerate(model):
                     checkpoint[f'module_{i}'] = module.state_dict()
-            else: # Fallback for unexpected model types
+            else: # Fallback for unexpected model types, including our new ModuleDict
                 checkpoint['model_state_dict'] = model.state_dict()
             
             save_path = os.path.join(args.save_path, f"{'_'.join(args.task) if args.mtl else args.task}_emergency.pt")
