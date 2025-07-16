@@ -19,7 +19,13 @@ from torch.utils.data import DataLoader
 def evaluate_rf_fingerprinting(model, test_dl, device, output_dir, class_names, args):
     is_mtl = getattr(args, 'mtl', False)
     if not is_mtl:
+<<<<<<< HEAD
+        projection = model['projection']
+        encoder = model['encoder']
+        task_head = model['head']
+=======
         projection, encoder, task_head = model['projection'], model['encoder'], model['head']
+>>>>>>> 94b2af597ca011577750002016092fdfb8f270fe
 
     y_true = []
     y_pred = []
@@ -167,7 +173,13 @@ def plot_distance_vs_accuracy(predictions_path):
 def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, mean_cfo, std_cfo, args):
     is_mtl = getattr(args, 'mtl', False)
     if not is_mtl:
+<<<<<<< HEAD
+        projection = model['projection']
+        encoder = model['encoder']
+        task_head = model['head']
+=======
         projection, encoder, task_head = model['projection'], model['encoder'], model['head']
+>>>>>>> 94b2af597ca011577750002016092fdfb8f270fe
     
     y_true = []
     y_pred = []
@@ -286,6 +298,7 @@ def evaluate_channel_estimation(model, test_dl, device, output_dir, args):
     is_mtl = getattr(args, 'mtl', False)
     if not is_mtl:
         projection, encoder, task_head = model['projection'], model['encoder'], model['head']
+
     
     all_y_true = []
     all_y_pred = []
