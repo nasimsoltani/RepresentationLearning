@@ -103,7 +103,7 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                     if total_loss == 0: continue
 
                     total_loss.backward()
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
                     optimizer.step()
 
                 # Calculate and Log Training Metrics for MTL
@@ -159,6 +159,11 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
 
                         train_loss += loss.item()
 
+                        #Log average of Y_true to wandb for debugging
+                        wandb.log({'train/y_true_mean': torch.mean(labels).item()}, step=epoch)
+                        #Log norm of gradients to wandb for debugging
+                        wandb.log({'train/grad_norm': torch.norm(torch.stack([p.grad.norm() for p in model.parameters()])).item()}, step=epoch)
+
                         if args.task == 'rf_fingerprinting':
                             _, predicted = torch.max(outputs.data, 1)
                             train_total += labels.size(0)
@@ -182,6 +187,7 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                 else:
                     print(f"Epoch {epoch+1} Train Loss: {avg_train_loss:.4f}, LR: {optimizer.param_groups[0]['lr']:.6f}")
 
+           
             # ===================================
             #          VALIDATION PHASE
             # ===================================

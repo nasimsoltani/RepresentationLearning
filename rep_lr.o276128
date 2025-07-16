@@ -1,0 +1,61 @@
+Lmod has detected the following error: The following module(s) are unknown:
+"nvidia_math/12.4"
+
+Please check the spelling or version number. Also try "module spider ..."
+It is also possible your cache file is out-of-date; it may help to try:
+  $ module --ignore_cache load "nvidia_math/12.4"
+
+Also make sure that all modulefiles written in TCL start with the string
+#%Module
+
+
+
+Lmod has detected the following error: The following module(s) are unknown:
+"cuda/12.4" "nvidia_math/12.4"
+
+Please check the spelling or version number. Also try "module spider ..."
+It is also possible your cache file is out-of-date; it may help to try:
+  $ module --ignore_cache load "cuda/12.4" "nvidia_math/12.4"
+
+Also make sure that all modulefiles written in TCL start with the string
+#%Module
+
+
+
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/condabin/conda
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/bin/conda
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/bin/conda-env
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/bin/activate
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/bin/deactivate
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/etc/profile.d/conda.sh
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/etc/fish/conf.d/conda.fish
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/shell/condabin/Conda.psm1
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/shell/condabin/conda-hook.ps1
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/lib/python3.13/site-packages/xontrib/conda.xsh
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/etc/profile.d/conda.csh
+no change     /home1/10608/aadharsh_aadhithya/.bashrc
+No action taken.
+Loading environment variables from .env file
+Results for this run will be saved in: results_20250625_133143
+--- Starting Single-Task: CFO Estimation ---
+wandb: Currently logged in as: aadharshaadhithya (aaa_2024) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.20.1
+wandb: Run data is saved locally in /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/wandb/run-20250625_133303-30aj39r2
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run cfo_estimation_20250625_133303
+wandb: ⭐️ View project at https://wandb.ai/aaa_2024/representation-learning-lab
+wandb: 🚀 View run at https://wandb.ai/aaa_2024/representation-learning-lab/runs/30aj39r2
+Results will be saved to: results_20250625_133143/cfo/cfo_estimation_20250625_133303
+{'Radio0': 0, 'Radio1': 1, 'Radio2': 2, 'Radio3': 3, 'Radio4': 4, 'Radio5': 5, 'Radio6': 6, 'Radio7': 7, 'Radio8': 8, 'Radio9': 9, 'Radio10': 10, 'Radio11': 11, 'Radio12': 12, 'Radio13': 13, 'Radio14': 14, 'Radio15': 15}
+Setting up Single-Task Learning model for cfo_estimation.
+
+Model Architecture Details:
+Projection Parameters: 427,520
+Encoder Parameters: 483,328
+Task Head Parameters: 165,121
+Total Parameters: 1,075,969
+
+Note: Memory usage calculation has been simplified.
+
+Using device: cuda:0
+Epoch 1/300 [Train]:   0%|          | 0/357 [00:00<?, ?it/s]Epoch 1/300 [Train]:   0%|          | 1/357 [00:17<1:41:47, 17.16s/it]Epoch 1/300 [Train]:   1%|▏         | 5/357 [00:20<19:37,  3.35s/it]  Epoch 1/300 [Train]:   3%|▎         | 9/357 [00:31<17:16,  2.98s/it]Epoch 1/300 [Train]:   4%|▎         | 13/357 [00:42<16:31,  2.88s/it]slurmstepd: error: *** JOB 276128 ON c609-011 CANCELLED AT 2025-06-25T13:34:31 ***

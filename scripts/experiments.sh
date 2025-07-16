@@ -37,37 +37,37 @@ HEAD_HIDDEN_DIM=256
 # # =================================================================================
 # # 1. Single-Task: RF Fingerprinting
 # # =================================================================================
-echo "--- Starting Single-Task: RF Fingerprinting ---"
-python code/rep_lr/main.py \
-    --task rf_fingerprinting \
-    --pkl_dataset_path $DATASET_PATH \
-    --save_path "${RESULTS_DIR}/rf" \
-    --epochs 300 \
-    --batch_size 256 \
-    --lr 1e-3 \
-    --proj_seq_len $PROJ_SEQ_LEN \
-    --proj_hidden_dim $PROJ_HIDDEN_DIM \
-    --d2 $D2 \
-    --head_hidden_dim $HEAD_HIDDEN_DIM \
-    --gpu_id $GPU_ID \
-    --dropout 0.1
-
-# # =================================================================================
-# # 2. Single-Task: CFO Estimation
-# # =================================================================================
-# echo "--- Starting Single-Task: CFO Estimation ---"
+# echo "--- Starting Single-Task: RF Fingerprinting ---"
 # python code/rep_lr/main.py \
-#     --task cfo_estimation \
+#     --task rf_fingerprinting \
 #     --pkl_dataset_path $DATASET_PATH \
-#     --save_path "${RESULTS_DIR}/cfo" \
+#     --save_path "${RESULTS_DIR}/rf" \
 #     --epochs 300 \
-#     --batch_size 256 \
+#     --batch_size 512 \
 #     --lr 1e-3 \
 #     --proj_seq_len $PROJ_SEQ_LEN \
 #     --proj_hidden_dim $PROJ_HIDDEN_DIM \
 #     --d2 $D2 \
 #     --head_hidden_dim $HEAD_HIDDEN_DIM \
-#     --gpu_id $GPU_ID
+#     --gpu_id $GPU_ID \
+#     --dropout 0.1
+
+# # =================================================================================
+# # 2. Single-Task: CFO Estimation
+# # =================================================================================
+echo "--- Starting Single-Task: CFO Estimation ---"
+python code/rep_lr/main.py \
+    --task cfo_estimation \
+    --pkl_dataset_path $DATASET_PATH \
+    --save_path "${RESULTS_DIR}/cfo" \
+    --epochs 300 \
+    --batch_size 512 \
+    --lr 1e-3 \
+    --proj_seq_len $PROJ_SEQ_LEN \
+    --proj_hidden_dim $PROJ_HIDDEN_DIM \
+    --d2 $D2 \
+    --head_hidden_dim $HEAD_HIDDEN_DIM \
+    --gpu_id $GPU_ID
 
 # # =================================================================================
 # # 3. Single-Task: Channel Estimation
@@ -86,9 +86,9 @@ python code/rep_lr/main.py \
 #     --head_hidden_dim $HEAD_HIDDEN_DIM \
 #     --gpu_id $GPU_ID
 
-# # =================================================================================
-# # 4. Multi-Task (MTL): RF + CFO
-# # =================================================================================
+# # # =================================================================================
+# # # 4. Multi-Task (MTL): RF + CFO
+# # # =================================================================================
 # echo "--- Starting MTL: RF Fingerprinting + CFO Estimation ---"
 # python code/rep_lr/main.py \
 #     --mtl \
@@ -106,9 +106,9 @@ python code/rep_lr/main.py \
 #     --head_hidden_dim $HEAD_HIDDEN_DIM \
 #     --gpu_id $GPU_ID
 
-# # =================================================================================
-# # 5. Multi-Task (MTL): RF + Channel
-# # =================================================================================
+# # # =================================================================================
+# # # 5. Multi-Task (MTL): RF + Channel
+# # # =================================================================================
 # echo "--- Starting MTL: RF Fingerprinting + Channel Estimation ---"
 # python code/rep_lr/main.py \
 #     --mtl \
@@ -126,9 +126,9 @@ python code/rep_lr/main.py \
 #     --head_hidden_dim $HEAD_HIDDEN_DIM \
 #     --gpu_id $GPU_ID
 
-# =================================================================================
-# 6. Multi-Task (MTL): CFO + Channel
-# =================================================================================
+# # =================================================================================
+# # 6. Multi-Task (MTL): CFO + Channel
+# # =================================================================================
 # echo "--- Starting MTL: CFO Estimation + Channel Estimation ---"
 # python code/rep_lr/main.py \
 #     --mtl \
@@ -146,9 +146,9 @@ python code/rep_lr/main.py \
 #     --head_hidden_dim $HEAD_HIDDEN_DIM \
 #     --gpu_id $GPU_ID
 
-# =================================================================================
-# 7. Multi-Task (MTL): RF + CFO + Channel
-# =================================================================================
+# # =================================================================================
+# # 7. Multi-Task (MTL): RF + CFO + Channel
+# # =================================================================================
 # echo "--- Starting MTL: RF Fingerprinting + CFO Estimation + Channel Estimation ---"
 # python code/rep_lr/main.py \
 #     --mtl \
@@ -156,7 +156,7 @@ python code/rep_lr/main.py \
 #     --pkl_dataset_path $DATASET_PATH \
 #     --save_path "${RESULTS_DIR}/rf_cfo_channel" \
 #     --epochs 300 \
-#     --batch_size 64 \
+#     --batch_size 256 \
 #     --lr 1e-4 \
 #     --w_rf 1.0 \
 #     --w_cfo 1.0 \
@@ -167,4 +167,4 @@ python code/rep_lr/main.py \
 #     --head_hidden_dim $HEAD_HIDDEN_DIM \
 #     --gpu_id $GPU_ID
 
-# echo "--- All experiments finished ---" 
+echo "--- All experiments finished ---" 
