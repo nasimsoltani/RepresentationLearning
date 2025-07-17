@@ -56,7 +56,7 @@ HEAD_HIDDEN_DIM=256
 # # 2. Single-Task: CFO Estimation
 # # =================================================================================
 echo "--- Starting Single-Task: CFO Estimation ---"
-python code/rep_lr/main.py \
+uv run python code/rep_lr/main.py \
     --task cfo_estimation \
     --pkl_dataset_path $DATASET_PATH \
     --save_path "${RESULTS_DIR}/cfo" \

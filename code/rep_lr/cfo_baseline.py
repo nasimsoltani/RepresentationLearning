@@ -6,9 +6,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import SGDRegressor
 from sklearn.svm import SVR
+from sklearn.kernel_ridge import KernelRidge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
 from tqdm import tqdm
 from dotenv import load_dotenv
 
@@ -21,21 +25,43 @@ os.environ['PKL_DATASET_PATH'] = '/home/hofmann/Documents/projects/Representatio
 
 class SimpleNN(nn.Module):
     """
-    A simple 3-layer neural network for regression.
+    A deeper neural network for regression with batch normalization and dropout.
     """
-    def __init__(self, input_dim):
+    def __init__(self, input_dim, hidden_dims=[ 512,128,64, 32], dropout=0.2):
         super(SimpleNN, self).__init__()
-        self.fc1 = nn.Linear(input_dim, 128)
-        self.relu1 = nn.ReLU()
-        self.fc2 = nn.Linear(128, 64)
-        self.relu2 = nn.ReLU()
-        self.fc3 = nn.Linear(64, 1)
+        
+        layers = []
+        prev_dim = input_dim
+        
+        for hidden_dim in hidden_dims:
+            layers.extend([
+                nn.Linear(prev_dim, hidden_dim),
+                nn.BatchNorm1d(hidden_dim),
+                nn.ReLU(),
+                nn.Dropout(dropout)
+            ])
+            prev_dim = hidden_dim
+        
+        # Final output layer
+        layers.append(nn.Linear(prev_dim, 1))
+        
+        self.network = nn.Sequential(*layers)
+        
+        # Initialize weights
+        self._init_weights()
+    
+    def _init_weights(self):
+        """
+        Initialize weights using Kaiming initialization
+        """
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def forward(self, x):
-        x = self.relu1(self.fc1(x))
-        x = self.relu2(self.fc2(x))
-        x = self.fc3(x)
-        return x
+        return self.network(x)
 
 def get_data(args):
     """
@@ -88,12 +114,13 @@ def get_data(args):
 
 def train_nn(model, train_dl, val_dl, args, device):
     """
-    Training loop for the neural network.
+    Training loop for the neural network with early stopping.
     """
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     loss_fn = nn.MSELoss()
     best_val_loss = float('inf')
-    
+    patience_counter = 0
+
     for epoch in range(args.epochs):
         model.train()
         train_loss = 0
@@ -124,6 +151,12 @@ def train_nn(model, train_dl, val_dl, args, device):
             best_val_loss = avg_val_loss
             torch.save(model.state_dict(), os.path.join(args.output_dir, 'best_nn_model.pt'))
             print("Saved best model.")
+            patience_counter = 0
+        else:
+            patience_counter += 1
+            if patience_counter >= args.patience:
+                print(f"Early stopping at epoch {epoch+1} as validation loss did not improve for {args.patience} epochs.")
+                break
 
 def evaluate(model, X_test, y_test, test_filenames, mean_cfo, std_cfo, args, device=None):
     """
@@ -181,12 +214,13 @@ def main():
     load_dotenv()
     parser = argparse.ArgumentParser(description='CFO Estimation Baseline Experiments')
     parser.add_argument('--pkl_dataset_path', type=str, default=os.getenv('PKL_DATASET_PATH'), help='Path to the pkl dataset file. Reads from PKL_DATASET_PATH environment variable if not provided.')
-    parser.add_argument('--model', type=str, choices=['nn', 'linear', 'svr'], required=True, help='Model to train and evaluate.')
+    parser.add_argument('--model', type=str, choices=['nn', 'linear', 'svr', 'kernel_ridge'], required=True, help='Model to train and evaluate.')
     parser.add_argument('--output_dir', type=str, default='results_cfo_baseline', help='Directory to save results.')
     parser.add_argument('--gpu_id', type=int, default=0, help='GPU ID to use for NN.')
     parser.add_argument('--batch_size', type=int, default=64, help='Batch size for NN training.')
     parser.add_argument('--epochs', type=int, default=100, help='Number of epochs for NN training.')
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate for NN training.')
+    parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping in NN training.')
     args = parser.parse_args()
 
     if not args.pkl_dataset_path:
@@ -210,26 +244,97 @@ def main():
         evaluate(model, X_test, y_test, test_filenames, mean_cfo, std_cfo, args, device)
 
     elif args.model == 'linear':
-        print("Training Linear Regression...")
-        model = LinearRegression()
-        model.fit(X_train, y_train)
-        print("Evaluating Linear Regression...")
+        print("Training Linear Model with GridSearchCV...")
+        
+        pipeline = Pipeline([
+            ('scaler', StandardScaler()),
+            ('regressor', SGDRegressor(random_state=42, max_iter=2000, tol=1e-4, early_stopping=True))
+        ])
+
+        param_grid = {
+            'regressor__loss': ['squared_error', 'huber'],
+            'regressor__penalty': ['l2', 'l1'],
+            'regressor__alpha': np.logspace(-4, 0, 5),
+            'regressor__epsilon': [0.1, 0.2]  # Only used by huber loss
+        }
+
+        search = GridSearchCV(pipeline, param_grid, cv=3, scoring='neg_mean_squared_error', n_jobs=-1, verbose=2)
+        search.fit(X_train, y_train)
+
+        print("\nBest parameters found for Linear Model:")
+        print(search.best_params_)
+        
+        model = search.best_estimator_
+        print("\nEvaluating Best Linear Model...")
         evaluate(model, X_test, y_test, test_filenames, mean_cfo, std_cfo, args)
     
     elif args.model == 'svr':
-        print("Training SVR...")
+        print("Training SVR with RandomizedSearchCV...")
+        
         # SVR can be very slow, so we'll use a subset of the training data.
         subset_size = 5000
         if len(X_train) > subset_size:
-            print(f"SVR training is slow. Using a random subset of {subset_size} samples for training.")
+            print(f"SVR training is slow. Using a random subset of {subset_size} samples for hyperparameter search.")
             indices = np.random.choice(len(X_train), subset_size, replace=False)
             X_train_sub, y_train_sub = X_train[indices], y_train[indices]
         else:
             X_train_sub, y_train_sub = X_train, y_train
-            
-        model = SVR()
-        model.fit(X_train_sub, y_train_sub)
-        print("Evaluating SVR...")
+
+        pipeline = Pipeline([
+            ('scaler', StandardScaler()),
+            ('svr', SVR())
+        ])
+        
+        param_dist = {
+            'svr__C': np.logspace(-2, 2, 5),
+            'svr__gamma': np.logspace(-3, 1, 5),
+            'svr__kernel': ['rbf']
+        }
+
+        search = RandomizedSearchCV(pipeline, param_dist, n_iter=20, cv=3, scoring='neg_mean_squared_error', n_jobs=-1, verbose=2, random_state=42)
+        search.fit(X_train_sub, y_train_sub)
+
+        print("\nBest parameters found for SVR:")
+        print(search.best_params_)
+
+        model = search.best_estimator_
+        
+        print("\nEvaluating SVR...")
+        evaluate(model, X_test, y_test, test_filenames, mean_cfo, std_cfo, args)
+
+    elif args.model == 'kernel_ridge':
+        print("Training Kernel Ridge Regression with RandomizedSearchCV...")
+
+        # Kernel Ridge can also be slow, so use a subset for tuning
+        subset_size = 5000
+        if len(X_train) > subset_size:
+            print(f"Kernel Ridge training is slow. Using a random subset of {subset_size} samples for hyperparameter search.")
+            indices = np.random.choice(len(X_train), subset_size, replace=False)
+            X_train_sub, y_train_sub = X_train[indices], y_train[indices]
+        else:
+            X_train_sub, y_train_sub = X_train, y_train
+
+        pipeline = Pipeline([
+            ('scaler', StandardScaler()),
+            ('krr', KernelRidge())
+        ])
+
+        param_dist = {
+            'krr__alpha': np.logspace(-2, 2, 5),
+            'krr__kernel': ['rbf', 'linear', 'polynomial'],
+            'krr__gamma': np.logspace(-3, 1, 5),
+            'krr__degree': [2, 3]
+        }
+
+        search = RandomizedSearchCV(pipeline, param_dist, n_iter=20, cv=3, scoring='neg_mean_squared_error', n_jobs=-1, verbose=2, random_state=42)
+        search.fit(X_train_sub, y_train_sub)
+
+        print("\nBest parameters found for Kernel Ridge Regression:")
+        print(search.best_params_)
+
+        model = search.best_estimator_
+        
+        print("\nEvaluating Kernel Ridge Regression...")
         evaluate(model, X_test, y_test, test_filenames, mean_cfo, std_cfo, args)
 
 if __name__ == '__main__':

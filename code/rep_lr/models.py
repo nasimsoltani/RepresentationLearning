@@ -140,144 +140,99 @@ class SEBlock(nn.Module):
 
 
 class Encoder(nn.Module):
-	def __init__(self, slice_size, output_dim=128, dropout=0.25):
-		"""
-		An encoder that transforms input through a sequence of convolutional blocks.
-		Based on RFFingerprintingNet architecture, with added SE blocks.
-		
-		Args:
-			slice_size (int): Input sequence length
-			output_dim (int): Final output dimension for each of the 2 channels.
-			dropout (float): Dropout probability for all layers
-		
-		Shape:
-			- Input: (batch_size, 2, slice_size)
-			- Output: (batch_size, 2, output_dim)
-		
-		Example:
-			>>> encoder = Encoder(1024, 128)
-			>>> x = torch.randn(32, 2, 1024)  # (batch_size=32, channels=2, seq_len=1024)
-			>>> out = encoder(x)              # (batch_size=32, 2, output_dim=128)
-		"""
-		super(Encoder, self).__init__()
-		self.output_dim = output_dim
-		
-		channel = 64
-		# Convolutional layers
-		self.conv0 = nn.Conv1d(2, channel, kernel_size=7, padding="same")
-		self.conv1 = nn.Conv1d(channel, channel, kernel_size=5, padding="same")
-		self.conv2 = nn.Conv1d(channel, channel, kernel_size=7, padding="same")
-		self.conv3 = nn.Conv1d(channel, channel, kernel_size=5, padding="same")
-		self.conv4 = nn.Conv1d(channel, channel, kernel_size=7, padding="same")
-		self.conv5 = nn.Conv1d(channel, channel, kernel_size=5, padding="same")
-		self.conv6 = nn.Conv1d(channel, channel, kernel_size=7, padding="same")
-		self.conv7 = nn.Conv1d(channel, channel, kernel_size=5, padding="same")
-		self.conv8 = nn.Conv1d(channel, channel, kernel_size=7, padding="same")
-		self.conv9 = nn.Conv1d(channel, channel, kernel_size=5, padding="same")
-		
-		self.bn0 = nn.BatchNorm1d(channel)
-		self.bn1 = nn.BatchNorm1d(channel)
-		self.bn2 = nn.BatchNorm1d(channel)
-		self.bn3 = nn.BatchNorm1d(channel)
-		self.bn4 = nn.BatchNorm1d(channel)
-		self.bn5 = nn.BatchNorm1d(channel)
-		self.bn6 = nn.BatchNorm1d(channel)
-		self.bn7 = nn.BatchNorm1d(channel)
-		self.bn8 = nn.BatchNorm1d(channel)
-		self.bn9 = nn.BatchNorm1d(channel)
+    def __init__(self, slice_size, output_dim=128, dropout=0.25, num_blocks=5):
+        """
+        An encoder that transforms input through a sequence of convolutional blocks.
+        Based on RFFingerprintingNet architecture, with added SE blocks.
+        
+        Args:
+            slice_size (int): Input sequence length
+            output_dim (int): Final output dimension for each of the 2 channels.
+            dropout (float): Dropout probability for all layers
+            num_blocks (int): Number of convolutional blocks (default: 5)
+        
+        Shape:
+            - Input: (batch_size, 2, slice_size)
+            - Output: (batch_size, 2, output_dim)
+        
+        Example:
+            >>> encoder = Encoder(1024, 128, num_blocks=3)  # Shallow network
+            >>> encoder = Encoder(1024, 128, num_blocks=7)  # Deep network
+            >>> x = torch.randn(32, 2, 1024)
+            >>> out = encoder(x)              # (batch_size=32, 2, output_dim=128)
+        """
+        super(Encoder, self).__init__()
+        self.output_dim = output_dim
+        self.num_blocks = num_blocks
+        channel = 64
 
-		self.pool1 = nn.MaxPool1d(2,2)
-		self.flatten = nn.Flatten()
-		self.relu = nn.LeakyReLU(negative_slope=0.1)
-		
-		# SE Blocks
-		# self.se1 = SEBlock(channel)
-		# self.se2 = SEBlock(channel)
-		# self.se3 = SEBlock(channel)
-		# self.se4 = SEBlock(channel)
-		# self.se5 = SEBlock(channel)
-		
-		# Calculate the size after all pooling operations
-		conv_output_size = channel * (slice_size // (2**5))
-		
-		# Final MLP layers
-		self.classifier = nn.Sequential(
-			nn.Dropout(dropout),
-			nn.Linear(conv_output_size, 256),
-			nn.LayerNorm(256),
-			nn.LeakyReLU(negative_slope=0.01),
-			nn.Dropout(dropout),
-			nn.Linear(256, 2 * output_dim)
-		)
-		
-		# Initialize weights using Kaiming initialization
-		self.apply(self._init_weights)
-	
-	def _init_weights(self, module):
-		"""Initialize weights for linear layers using Kaiming initialization"""
-		if isinstance(module, nn.Linear):
-			nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='leaky_relu')
-			if module.bias is not None:
-				nn.init.zeros_(module.bias)
-	
-	def forward(self, x):
-		"""
-		Forward pass through the encoder.
-		
-		Args:
-			x (torch.Tensor): Input tensor of shape (batch_size, 2, slice_size)
-		
-		Returns:
-			torch.Tensor: Output tensor of shape (batch_size, 2, output_dim)
-		
-		Shape:
-			- Input: (B, 2, L)
-			- Conv blocks: (B, 64, L) -> (B, 64, L/2) -> (B, 64, L/4) -> (B, 64, L/8) -> (B, 64, L/16) -> (B, 64, L/32)
-			- Output: (B, 2, output_dim)
-		"""
-		# x shape: (B, 2, L)
-		# Block 1
-		x = self.relu(self.bn0(self.conv0(x)))  # shape: (B, 64, L)
-		x = self.relu(self.bn1(self.conv1(x)))  # shape: (B, 64, L)
-		# x = self.se1(x)
-		x = self.pool1(x)  # shape: (B, 64, L/2)
-		
-		# Block 2 with residual
-		residual = x
-		x = self.relu(self.bn2(self.conv2(x)))  # shape: (B, 64, L/2)
-		x = self.bn3(self.conv3(x))
-		#x = self.se2(x)
-		x = self.relu(x + residual)
-		x = self.pool1(x)  # shape: (B, 64, L/4)
-		
-		# Block 3 with residual
-		residual = x
-		x = self.relu(self.bn4(self.conv4(x)))  # shape: (B, 64, L/4)
-		x = self.bn5(self.conv5(x))
-		#x = self.se3(x)
-		x = self.relu(x + residual)
-		x = self.pool1(x)  # shape: (B, 64, L/8)
-		
-		# Block 4 with residual
-		residual = x
-		x = self.relu(self.bn6(self.conv6(x)))  # shape: (B, 64, L/8)
-		x = self.bn7(self.conv7(x))
-		#x = self.se4(x)
-		x = self.relu(x + residual)
-		x = self.pool1(x)  # shape: (B, 64, L/16)
-		
-		# Block 5 with residual
-		residual = x
-		x = self.relu(self.bn8(self.conv8(x)))  # shape: (B, 64, L/16)
-		x = self.bn9(self.conv9(x))
-		#x = self.se5(x)
-		x = self.relu(x + residual)
-		x = self.pool1(x)  # shape: (B, 64, L/32)
-		
-		features = self.flatten(x)  # shape: (B, 64 * L/32)
-		
-		output = self.classifier(features)  # shape: (B, 2 * output_dim)
-		return output.view(output.size(0), 2, self.output_dim)
+        # Dynamic convolutional and batchnorm layers
+        self.conv_layers = nn.ModuleList()
+        self.bn_layers = nn.ModuleList()
+        for i in range(num_blocks):
+            if i == 0:
+                self.conv_layers.append(nn.Conv1d(2, channel, kernel_size=7, padding="same"))
+                self.bn_layers.append(nn.BatchNorm1d(channel))
+                self.conv_layers.append(nn.Conv1d(channel, channel, kernel_size=5, padding="same"))
+                self.bn_layers.append(nn.BatchNorm1d(channel))
+            else:
+                self.conv_layers.append(nn.Conv1d(channel, channel, kernel_size=7, padding="same"))
+                self.bn_layers.append(nn.BatchNorm1d(channel))
+                self.conv_layers.append(nn.Conv1d(channel, channel, kernel_size=5, padding="same"))
+                self.bn_layers.append(nn.BatchNorm1d(channel))
+
+        self.pool = nn.MaxPool1d(2,2)
+        self.flatten = nn.Flatten()
+        self.relu = nn.LeakyReLU(negative_slope=0.1)
+
+        # Calculate the size after all pooling operations
+        conv_output_size = channel * (slice_size // (2 ** num_blocks))
+
+        # Final MLP layers
+        self.classifier = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.Linear(conv_output_size, 256),
+            nn.LayerNorm(256),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.Dropout(dropout),
+            nn.Linear(256, 2 * output_dim)
+        )
+
+        # Initialize weights using Kaiming initialization
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        """Initialize weights for linear layers using Kaiming initialization"""
+        if isinstance(module, nn.Linear):
+            nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='leaky_relu')
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
+
+    def forward(self, x):
+        """
+        Forward pass through the encoder.
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, 2, slice_size)
+        Returns:
+            torch.Tensor: Output tensor of shape (batch_size, 2, output_dim)
+        """
+        # x shape: (B, 2, L)
+        for i in range(self.num_blocks):
+            idx = i * 2
+            # First conv + BN + ReLU
+            x = self.relu(self.bn_layers[idx](self.conv_layers[idx](x)))
+            # Second conv + BN
+            x = self.bn_layers[idx+1](self.conv_layers[idx+1](x))
+            # Residual connection for all but the first block
+            if i > 0:
+                x = self.relu(x + residual)
+            else:
+                x = self.relu(x)
+            residual = x
+            x = self.pool(x)
+        features = self.flatten(x)
+        output = self.classifier(features)
+        return output.view(output.size(0), 2, self.output_dim)
 
 
 class RFClassificationHead(nn.Module):
@@ -421,7 +376,7 @@ class CFOEstimationHead(nn.Module):
 		
 			nn.Dropout(dropout),
 			nn.Linear(hidden_dim//2, 1),          # (B, hidden_dim//2) -> (B, 1)
-			#nn.Tanh()                             # Bound output to [-1, 1]
+			nn.Tanh()                             # Bound output to [-1, 1]
 			#output is unbounded
 			
 		)

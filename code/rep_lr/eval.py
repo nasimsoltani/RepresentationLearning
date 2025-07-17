@@ -19,6 +19,10 @@ from torch.utils.data import DataLoader
 def evaluate_rf_fingerprinting(model, test_dl, device, output_dir, class_names, args):
     is_mtl = getattr(args, 'mtl', False)
     if not is_mtl:
+        projection = model['projection']
+        encoder = model['encoder']
+        task_head = model['head']
+    else:
         projection, encoder, task_head = model['projection'], model['encoder'], model['head']
 
     y_true = []
@@ -167,6 +171,10 @@ def plot_distance_vs_accuracy(predictions_path):
 def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, mean_cfo, std_cfo, args):
     is_mtl = getattr(args, 'mtl', False)
     if not is_mtl:
+        projection = model['projection']
+        encoder = model['encoder']
+        task_head = model['head']
+    else:
         projection, encoder, task_head = model['projection'], model['encoder'], model['head']
     
     y_true = []
@@ -285,6 +293,8 @@ def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, mean_cf
 def evaluate_channel_estimation(model, test_dl, device, output_dir, args):
     is_mtl = getattr(args, 'mtl', False)
     if not is_mtl:
+        projection, encoder, task_head = model['projection'], model['encoder'], model['head']
+    else:
         projection, encoder, task_head = model['projection'], model['encoder'], model['head']
 
     
@@ -513,6 +523,9 @@ def main():
     # Use batch_size=1 for test loader because of variable number of slices
     test_dl = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
 
+    # After train_args is loaded and before model construction
+    encoder_num_blocks = getattr(train_args, 'encoder_num_blocks', 1)
+
     # Re-create model architecture
     is_mtl = getattr(train_args, 'mtl', False)
 
@@ -537,7 +550,7 @@ def main():
                 projections[task] = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
                 heads[task] = CFOEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
 
-        encoder = Encoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout)
+        encoder = Encoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout, num_blocks=encoder_num_blocks)
         
         model = torch.nn.ModuleDict({
             'projections': projections,
@@ -555,7 +568,7 @@ def main():
             seq_len = train_args.slice_len if task_name == 'rf_fingerprinting' else 160
             projection = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
         
-        encoder = Encoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout)
+        encoder = Encoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout, num_blocks=encoder_num_blocks)
 
         if task_name == 'rf_fingerprinting':
             task_head = RFClassificationHead(input_dim=2*train_args.d2, num_classes=num_classes, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
