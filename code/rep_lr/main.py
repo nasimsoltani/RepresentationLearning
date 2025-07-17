@@ -51,6 +51,8 @@ def main():
                         help='Dropout probability for all layers.')
     parser.add_argument('--head_hidden_dim', type=int, default=256,
                         help='Hidden dimension for task head.')
+    parser.add_argument('--encoder_num_blocks', type=int, default=1,
+                        help='Number of convolutional blocks in the encoder.')
     
     # MTL arguments
     parser.add_argument('--mtl', action='store_true', help='Enable Multi-Task Learning.')
@@ -159,9 +161,10 @@ def main():
                 # Use UpsamplingProjector for CFO to preserve sequence structure
                 projections[task] = UpsamplingProjector(output_seq_len=args.proj_seq_len)
                 heads[task] = CFOEstimationHead(input_dim=2*args.d2, hidden_dim=args.head_hidden_dim, dropout=args.dropout)
-                loss_fns[task] = nn.HuberLoss()
+                loss_fns[task] = nn.MSELoss() #nn.HuberLoss()
 
-        encoder = Encoder(slice_size=args.proj_seq_len, output_dim=args.d2, dropout=args.dropout)
+
+        encoder = Encoder(slice_size=args.proj_seq_len, output_dim=args.d2, dropout=args.dropout, num_blocks=args.encoder_num_blocks)
         
         model = nn.ModuleDict({
             'projections': projections,
@@ -191,7 +194,7 @@ def main():
             projection = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=args.proj_seq_len, hidden_dim=args.proj_hidden_dim)
 
         # Create encoder (common for all tasks)
-        encoder = Encoder(slice_size=args.proj_seq_len, output_dim=args.d2, dropout=args.dropout)
+        encoder = Encoder(slice_size=args.proj_seq_len, output_dim=args.d2, dropout=args.dropout, num_blocks=args.encoder_num_blocks)
 
         # Task-specific head and loss function
         if args.task == 'rf_fingerprinting':
@@ -223,7 +226,7 @@ def main():
                 hidden_dim=args.head_hidden_dim,
                 dropout=args.dropout
             )
-            loss_fn = nn.HuberLoss()
+            loss_fn = nn.MSELoss() # nn.HuberLoss()
             
         else:
             raise ValueError(f"Unknown task: {args.task}")

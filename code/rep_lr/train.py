@@ -160,8 +160,8 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                         train_loss += loss.item()
 
 
-                        if epoch>25:
-                            import pdb; pdb.set_trace()
+                        #if epoch>25:
+                        #    import pdb; pdb.set_trace()
 
                         #Log average of Y_true to wandb for debugging
                         wandb.log({'train/y_true_mean': torch.mean(labels).item()}, step=epoch)
