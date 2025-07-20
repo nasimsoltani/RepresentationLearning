@@ -16,93 +16,10 @@ dotenv.load_dotenv()
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from rep_lr.models import (ComplexSequenceProjector, Encoder, 
-                   RFClassificationHead, ChannelEstimationHead, CFOEstimationHead)
+                   RFClassificationHead, ChannelEstimationHead, CFOEstimationHead,
+                   UpsamplingProjector)
 from rep_lr.py_datasets import TrainDataset
 from torch.utils.data import DataLoader
-
-class LegacyEncoder(torch.nn.Module):
-    """
-    Legacy encoder class that matches the saved model structure with individual conv layers.
-    This is a compatibility layer for loading older model checkpoints.
-    """
-    def __init__(self, slice_size, output_dim=128, dropout=0.25):
-        super(LegacyEncoder, self).__init__()
-        self.output_dim = output_dim
-        channel = 64
-
-        # Individual conv layers to match saved model structure
-        self.conv0 = torch.nn.Conv1d(2, channel, kernel_size=7, padding="same")
-        self.conv1 = torch.nn.Conv1d(channel, channel, kernel_size=5, padding="same")
-        self.conv2 = torch.nn.Conv1d(channel, channel, kernel_size=7, padding="same")
-        self.conv3 = torch.nn.Conv1d(channel, channel, kernel_size=5, padding="same")
-        self.conv4 = torch.nn.Conv1d(channel, channel, kernel_size=7, padding="same")
-        self.conv5 = torch.nn.Conv1d(channel, channel, kernel_size=5, padding="same")
-        self.conv6 = torch.nn.Conv1d(channel, channel, kernel_size=7, padding="same")
-        self.conv7 = torch.nn.Conv1d(channel, channel, kernel_size=5, padding="same")
-        self.conv8 = torch.nn.Conv1d(channel, channel, kernel_size=7, padding="same")
-        self.conv9 = torch.nn.Conv1d(channel, channel, kernel_size=5, padding="same")
-        
-        # Individual batch norm layers
-        self.bn0 = torch.nn.BatchNorm1d(channel)
-        self.bn1 = torch.nn.BatchNorm1d(channel)
-        self.bn2 = torch.nn.BatchNorm1d(channel)
-        self.bn3 = torch.nn.BatchNorm1d(channel)
-        self.bn4 = torch.nn.BatchNorm1d(channel)
-        self.bn5 = torch.nn.BatchNorm1d(channel)
-        self.bn6 = torch.nn.BatchNorm1d(channel)
-        self.bn7 = torch.nn.BatchNorm1d(channel)
-        self.bn8 = torch.nn.BatchNorm1d(channel)
-        self.bn9 = torch.nn.BatchNorm1d(channel)
-
-        self.pool = torch.nn.MaxPool1d(2, 2)
-        self.flatten = torch.nn.Flatten()
-        self.relu = torch.nn.LeakyReLU(negative_slope=0.1)
-
-        # Calculate the size after all pooling operations (5 pooling layers)
-        conv_output_size = channel * (slice_size // 32)
-
-        # Final MLP layers
-        self.classifier = torch.nn.Sequential(
-            torch.nn.Dropout(dropout),
-            torch.nn.Linear(conv_output_size, 256),
-            torch.nn.LayerNorm(256),
-            torch.nn.LeakyReLU(negative_slope=0.01),
-            torch.nn.Dropout(dropout),
-            torch.nn.Linear(256, 2 * output_dim)
-        )
-
-    def forward(self, x):
-        """
-        Forward pass through the encoder.
-        Args:
-            x (torch.Tensor): Input tensor of shape (batch_size, 2, slice_size)
-        Returns:
-            torch.Tensor: Output tensor of shape (batch_size, 2, output_dim)
-        """
-        # x shape: (B, 2, L)
-        x = self.relu(self.bn0(self.conv0(x)))
-        x = self.relu(self.bn1(self.conv1(x)))
-        x = self.pool(x)
-        
-        x = self.relu(self.bn2(self.conv2(x)))
-        x = self.relu(self.bn3(self.conv3(x)))
-        x = self.pool(x)
-        
-        x = self.relu(self.bn4(self.conv4(x)))
-        x = self.relu(self.bn5(self.conv5(x)))
-        x = self.pool(x)
-        
-        x = self.relu(self.bn6(self.conv6(x)))
-        x = self.relu(self.bn7(self.conv7(x)))
-        x = self.pool(x)
-        
-        x = self.relu(self.bn8(self.conv8(x)))
-        x = self.relu(self.bn9(self.conv9(x)))
-        x = self.pool(x)
-        
-        features = self.flatten(x)
-        output = self.classifier(features)
-        return output.view(output.size(0), 2, self.output_dim)
 
 def extract_activations(cli_args):
     """
@@ -135,6 +52,9 @@ def extract_activations(cli_args):
 
     # Create output directory
     output_dir = cli_args.output_dir
+    if output_dir is None:
+        output_dir = os.path.join(model_dir, 'activations')
+
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     print(f"Saving activations to: {output_dir}")
@@ -204,11 +124,15 @@ def extract_activations(cli_args):
                 projections[task] = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
                 heads[task] = ChannelEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, output_length=52, dropout=train_args.dropout)
             elif task == 'cfo_estimation':
-                seq_len = 160
-                projections[task] = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
+                projections[task] = UpsamplingProjector(output_seq_len=train_args.proj_seq_len)
                 heads[task] = CFOEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
 
-        encoder = LegacyEncoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout)
+        encoder = Encoder(
+            slice_size=train_args.proj_seq_len, 
+            output_dim=train_args.d2, 
+            dropout=train_args.dropout,
+            num_blocks=getattr(train_args, 'encoder_num_blocks', 1)
+        )
         
         model_projections = projections
         model_encoder = encoder
@@ -217,9 +141,19 @@ def extract_activations(cli_args):
     else: # Single-task
         print("Reconstructing single-task model architecture.")
         task_name = train_args.task
-        seq_len = train_args.slice_len if task_name == 'rf_fingerprinting' else 160
-        projection = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
-        encoder = LegacyEncoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout)
+        
+        if task_name == 'cfo_estimation':
+            projection = UpsamplingProjector(output_seq_len=train_args.proj_seq_len)
+        else:
+            seq_len = train_args.slice_len if task_name == 'rf_fingerprinting' else 160
+            projection = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
+
+        encoder = Encoder(
+            slice_size=train_args.proj_seq_len, 
+            output_dim=train_args.d2, 
+            dropout=train_args.dropout,
+            num_blocks=getattr(train_args, 'encoder_num_blocks', 1)
+        )
         # Dummy head
         task_head = torch.nn.Identity()
         model = torch.nn.ModuleList([projection, encoder, task_head])
@@ -244,14 +178,16 @@ def extract_activations(cli_args):
     with torch.no_grad():
         for batch in tqdm(data_loader, desc="Extracting Activations"):
             rf_inputs, rf_labels, cfo_inputs, cfo_labels, channel_inputs, channel_labels, file_paths = batch
-            
+            #print(f"[extract_activations.py] Batch loaded. Shapes: rf_inputs={rf_inputs.shape}, cfo_inputs={cfo_inputs.shape}, channel_inputs={channel_inputs.shape}")
+
             filename = os.path.basename(file_paths[0])
             save_path = os.path.join(output_dir, filename.replace('.mat', '.pth'))
 
             if os.path.exists(save_path) and not cli_args.overwrite:
                 continue
 
-            # import pdb; pdb.set_trace()
+            # This tensor will hold the RF data that gets saved.
+            rf_inputs_to_save = None
 
             if is_mtl:
                 projected_tensors = []
@@ -267,42 +203,59 @@ def extract_activations(cli_args):
                         # MTL eval logic for RF averages projections across slices
                         
                         proj = model_projections[task_name](inputs)
+                        #print(f"[extract_activations.py] MTL RF projection shape: {proj.shape}")
                         projected_tensors.append(proj.mean(dim=0, keepdim=True))
                     else:
-                        projected_tensors.append(model_projections[task_name](inputs))
+                        proj = model_projections[task_name](inputs)
+                        #print(f"[extract_activations.py] MTL {task_name} projection shape: {proj.shape}")
+                        projected_tensors.append(proj)
                 
                 projected_sum = torch.sum(torch.stack(projected_tensors), dim=0)
+                #print(f"[extract_activations.py] MTL projected_sum shape: {projected_sum.shape}")
                 encoded_activation = model_encoder(projected_sum)
+                #print(f"[extract_activations.py] MTL encoded_activation shape: {encoded_activation.shape}")
                 
+                # In MTL mode, save the original, unmodified rf_inputs.
+                rf_inputs_to_save = rf_inputs.detach().cpu()
 
             else: # Single-task
                 task_name = train_args.task
                 if task_name == 'rf_fingerprinting':
                     inputs = rf_inputs.squeeze(0).to(device).float() # Process slices
+                    # Use the squeezed tensor for saving.
+                    rf_inputs_to_save = rf_inputs.detach().cpu()
                 elif task_name == 'cfo_estimation':
                     inputs = cfo_inputs.to(device).float()
+                    # For non-RF tasks, save the original RF inputs as a placeholder.
+                    rf_inputs_to_save = rf_inputs.detach().cpu()
                 elif task_name == 'channel_estimation':
                     inputs = channel_inputs.to(device).float()
+                    # For non-RF tasks, save the original RF inputs as a placeholder.
+                    rf_inputs_to_save = rf_inputs.detach().cpu()
 
                 projection, encoder, _ = model
                 projected = projection(inputs)
+                #print(f"[extract_activations.py] Single-task {task_name} projection shape: {projected.shape}")
                 encoded_activation = encoder(projected)
+                #print(f"[extract_activations.py] Single-task {task_name} encoded_activation before mean: {encoded_activation.shape}")
                 if task_name == 'rf_fingerprinting':
                     # Average the activations of all slices to get a single vector per file
                     encoded_activation = encoded_activation.mean(dim=0, keepdim=True)
+                    #print(f"[extract_activations.py] Single-task {task_name} encoded_activation after mean: {encoded_activation.shape}")
 
             # Save the activation
             data_to_save = {
                 'activation': encoded_activation.detach().cpu(),
                 'filename': filename,
-                'RF_X': rf_inputs.detach().cpu(),
+                'RF_X': rf_inputs_to_save,
                 'CFO_X': cfo_inputs.detach().cpu(),
                 'Channel_X': channel_inputs.detach().cpu(),
                 'rf_label': rf_labels.detach().cpu(),
                 'cfo_label': cfo_labels.detach().cpu(),
                 'channel_label': channel_labels.detach().cpu()
             }
-            torch.save(data_to_save, save_path)
+            #print(f"[extract_activations.py] Saving data. Shapes: activation={data_to_save['activation'].shape}, RF_X={data_to_save['RF_X'].shape}, CFO_X={data_to_save['CFO_X'].shape}, Channel_X={data_to_save['Channel_X'].shape}")
+            torch.save(data_to_save, save_path, _use_new_zipfile_serialization=False)
 
     print(f"\nExtraction complete. Activations are saved in {output_dir}")
 
@@ -311,8 +264,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Extract activations from the shared encoder of a model.')
     parser.add_argument('--model_path', type=str, required=True, 
                         help='Path to the trained model checkpoint (.pt file) or its containing directory.')
-    parser.add_argument('--output_dir', type=str, required=True, 
-                        help='Directory to save the extracted activation files.')
+    parser.add_argument('--output_dir', type=str, default=None, 
+                        help='Directory to save the extracted activation files. Defaults to <model_path>/activations.')
     parser.add_argument('--gpu_id', default=0, type=int, 
                         help='ID of GPU to be used.')
     parser.add_argument('--data_fraction', type=float, default=1.0, 

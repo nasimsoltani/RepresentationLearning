@@ -256,6 +256,7 @@ class RFClassificationHead(nn.Module):
 			>>> out = head(x)                 # (B, 16)
 		"""
 		super(RFClassificationHead, self).__init__()
+		self.input_dim = input_dim
 		
 		self.classifier = nn.Sequential(
 			nn.Linear(input_dim, hidden_dim),    # (B, input_dim) -> (B, hidden_dim)
@@ -308,6 +309,7 @@ class ChannelEstimationHead(nn.Module):
 			>>> out = head(x)                 # (B, 2, 52)
 		"""
 		super(ChannelEstimationHead, self).__init__()
+		self.input_dim = input_dim
 		
 		self.output_length = output_length
 		
@@ -362,30 +364,42 @@ class CFOEstimationHead(nn.Module):
 			>>> out = head(x)                 # (B, 1)
 		"""
 		super(CFOEstimationHead, self).__init__()
+		self.input_dim = input_dim
 		
 		self.regressor = nn.Sequential(
 			nn.Linear(input_dim, hidden_dim),    # (B, input_dim) -> (B, hidden_dim)
-			nn.LayerNorm(hidden_dim),
-			#nn.ELU(),
-			nn.LeakyReLU(negative_slope=0.01),
+			nn.BatchNorm1d(hidden_dim),          # Use BatchNorm instead of LayerNorm for regression
+			nn.ReLU(),                           # Use ReLU instead of LeakyReLU for regression
 			nn.Dropout(dropout),
-			nn.Linear(hidden_dim, hidden_dim//2), # (B, hidden_dim) -> (B, hidden_dim//2)
-			nn.LayerNorm(hidden_dim//2),
-			#nn.ELU(),
-			nn.LeakyReLU(negative_slope=0.01),
-		
-			nn.Dropout(dropout),
-			nn.Linear(hidden_dim//2, 1),          # (B, hidden_dim//2) -> (B, 1)
-			nn.Tanh()                             # Bound output to [-1, 1]
-			#output is unbounded
 			
+			nn.Linear(hidden_dim, hidden_dim//2), # (B, hidden_dim) -> (B, hidden_dim//2)
+			nn.BatchNorm1d(hidden_dim//2),
+			nn.ReLU(),
+			nn.Dropout(dropout),
+			
+			nn.Linear(hidden_dim//2, hidden_dim//4), # Add one more layer for better capacity
+			nn.BatchNorm1d(hidden_dim//4),
+			nn.ReLU(),
+			nn.Dropout(dropout//2),              # Reduce dropout for final layers
+			
+			nn.Linear(hidden_dim//4, 1)          # (B, hidden_dim//4) -> (B, 1)
+			# No activation - let the model learn the full range
 		)
-		# Add proper initialization
+		
+		# Better initialization for regression
+		self._init_weights()
+	
+	def _init_weights(self):
+		"""Initialize weights specifically for regression task."""
 		for m in self.modules():
 			if isinstance(m, nn.Linear):
-				nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='leaky_relu')
+				# Use Xavier/Glorot initialization for regression
+				nn.init.xavier_normal_(m.weight, gain=1.0)
 				if m.bias is not None:
 					nn.init.constant_(m.bias, 0)
+			elif isinstance(m, nn.BatchNorm1d):
+				nn.init.constant_(m.weight, 1)
+				nn.init.constant_(m.bias, 0)
 	
 	def forward(self, x):
 		"""
@@ -396,6 +410,245 @@ class CFOEstimationHead(nn.Module):
 		"""
 		x = x.view(x.size(0), -1)
 		return self.regressor(x)                 # (B, 2*d2) -> (B, 1)
+
+
+class SimpleCFOEstimationHead(nn.Module):
+	def __init__(self, input_dim, hidden_dim=64, dropout=0.1):
+		"""
+		Simple regression head for CFO estimation, based on successful baseline.
+		
+		Args:
+			input_dim (int): Input dimension from encoder (2 * d2)
+			hidden_dim (int): Hidden dimension for intermediate layer
+			dropout (float): Dropout probability
+		
+		Shape:
+			- Input: (batch_size, 2, d2)
+			- Output: (batch_size, 1)
+		"""
+		super(SimpleCFOEstimationHead, self).__init__()
+		self.input_dim = input_dim
+		
+		# Simple 2-layer architecture like the successful baseline
+		self.regressor = nn.Sequential(
+			nn.Flatten(),                        # (B, 2, d2) -> (B, 2*d2) 
+			nn.Linear(input_dim, hidden_dim),    # (B, 2*d2) -> (B, hidden_dim)
+			nn.ReLU(),
+			nn.Dropout(dropout),
+			nn.Linear(hidden_dim, 1)             # (B, hidden_dim) -> (B, 1)
+		)
+		
+		# Simple initialization
+		for m in self.modules():
+			if isinstance(m, nn.Linear):
+				nn.init.xavier_normal_(m.weight)
+				if m.bias is not None:
+					nn.init.zeros_(m.bias)
+	
+	def forward(self, x):
+		"""
+		Args:
+			x (torch.Tensor): Input tensor of shape (batch_size, 2, d2)
+		Returns:
+			torch.Tensor: CFO estimate of shape (batch_size, 1)
+		"""
+		return self.regressor(x)
+
+
+class DirectCFOEstimationHead(nn.Module):
+	def __init__(self, input_seq_len=256, hidden_dim=128, dropout=0.1):
+		"""
+		Direct CFO estimation that works on projected sequences without encoder.
+		
+		Args:
+			input_seq_len (int): Length of projected sequence
+			hidden_dim (int): Hidden dimension for processing
+			dropout (float): Dropout probability
+		
+		Shape:
+			- Input: (batch_size, 2, input_seq_len)  # Projected CFO data
+			- Output: (batch_size, 1)
+		"""
+		super(DirectCFOEstimationHead, self).__init__()
+		
+		# Process each channel separately then combine
+		self.channel_processor = nn.Sequential(
+			nn.Conv1d(2, 16, kernel_size=7, padding=3),  # Light processing
+			nn.ReLU(),
+			nn.AdaptiveAvgPool1d(32),  # Reduce to fixed size
+			nn.Flatten(),  # (B, 16*32) = (B, 512)
+		)
+		
+		self.regressor = nn.Sequential(
+			nn.Linear(512, hidden_dim),
+			nn.ReLU(),
+			nn.Dropout(dropout),
+			nn.Linear(hidden_dim, 64),
+			nn.ReLU(),
+			nn.Dropout(dropout),
+			nn.Linear(64, 1)
+		)
+		
+		# Initialize weights
+		for m in self.modules():
+			if isinstance(m, (nn.Linear, nn.Conv1d)):
+				nn.init.xavier_normal_(m.weight)
+				if m.bias is not None:
+					nn.init.zeros_(m.bias)
+	
+	def forward(self, x):
+		"""
+		Args:
+			x (torch.Tensor): Projected CFO data of shape (batch_size, 2, seq_len)
+		Returns:
+			torch.Tensor: CFO estimate of shape (batch_size, 1)
+		"""
+		features = self.channel_processor(x)  # (B, 2, L) -> (B, 512)
+		return self.regressor(features)       # (B, 512) -> (B, 1)
+
+
+class CFOAdaptiveHead(nn.Module):
+	def __init__(self, input_dim, hidden_dim=128, dropout=0.1):
+		"""
+		CFO head with pre-processing to adapt shared encoder features for CFO estimation.
+		This works with MTL by adding CFO-specific processing after the shared encoder.
+		
+		Args:
+			input_dim (int): Input dimension from shared encoder (2 * d2)
+			hidden_dim (int): Hidden dimension for CFO-specific processing
+			dropout (float): Dropout probability
+		
+		Shape:
+			- Input: (batch_size, 2, d2) from shared encoder
+			- Output: (batch_size, 1)
+		"""
+		super(CFOAdaptiveHead, self).__init__()
+		self.input_dim = input_dim
+		
+		# CFO-specific feature adaptation
+		self.cfo_adapter = nn.Sequential(
+			# Reshape and process encoder features for CFO
+			nn.Flatten(),  # (B, 2, d2) -> (B, 2*d2)
+			nn.Linear(input_dim, hidden_dim),
+			nn.LayerNorm(hidden_dim),  # Normalize features for regression
+			nn.ReLU(),
+			nn.Dropout(dropout),
+			
+			# CFO-specific transformation
+			nn.Linear(hidden_dim, hidden_dim//2),
+			nn.LayerNorm(hidden_dim//2),
+			nn.ReLU(),
+			nn.Dropout(dropout//2),
+			
+			# Final regression layer
+			nn.Linear(hidden_dim//2, 1)
+		)
+		
+		# Better initialization for regression in MTL setting
+		self._init_weights()
+	
+	def _init_weights(self):
+		"""Initialize weights for stable MTL training."""
+		for m in self.modules():
+			if isinstance(m, nn.Linear):
+				# Use smaller initialization for MTL stability
+				nn.init.xavier_normal_(m.weight, gain=0.5)
+				if m.bias is not None:
+					nn.init.zeros_(m.bias)
+			elif isinstance(m, nn.LayerNorm):
+				nn.init.ones_(m.weight)
+				nn.init.zeros_(m.bias)
+	
+	def forward(self, x):
+		"""
+		Args:
+			x (torch.Tensor): Features from shared encoder of shape (batch_size, 2, d2)
+		Returns:
+			torch.Tensor: CFO estimate of shape (batch_size, 1)
+		"""
+		return self.cfo_adapter(x)
+
+
+class TaskAdaptiveEncoder(nn.Module):
+	def __init__(self, slice_size, output_dim=128, dropout=0.25, num_blocks=3):
+		"""
+		Enhanced encoder that works better for multiple tasks including CFO.
+		Less aggressive pooling and more gradual feature extraction.
+		
+		Args:
+			slice_size (int): Input sequence length
+			output_dim (int): Final output dimension for each of the 2 channels
+			dropout (float): Dropout probability
+			num_blocks (int): Number of convolutional blocks (fewer for CFO compatibility)
+		"""
+		super(TaskAdaptiveEncoder, self).__init__()
+		self.output_dim = output_dim
+		self.num_blocks = num_blocks
+		
+		# Use smaller number of blocks and gentler pooling for CFO compatibility
+		self.layers = nn.ModuleList()
+		
+		channels = [2, 32, 64, 64]  # Gentler channel progression
+		
+		for i in range(num_blocks):
+			in_ch = channels[i]
+			out_ch = channels[i+1]
+			
+			block = nn.Sequential(
+				nn.Conv1d(in_ch, out_ch, kernel_size=7, padding=3),
+				nn.BatchNorm1d(out_ch),
+				nn.ReLU(),
+				nn.Conv1d(out_ch, out_ch, kernel_size=5, padding=2),
+				nn.BatchNorm1d(out_ch),
+				nn.ReLU(),
+				# Gentler pooling - adaptive instead of fixed stride
+				nn.AdaptiveMaxPool1d(slice_size // (2 ** (i+1))) if i < num_blocks-1 else nn.Identity()
+			)
+			self.layers.append(block)
+		
+		# Calculate final feature size based on actual num_blocks used
+		final_length = slice_size // (2 ** (num_blocks-1))
+		actual_output_channels = channels[num_blocks]  # Use the actual output channels for num_blocks
+		conv_output_size = actual_output_channels * final_length
+		
+		# Final projection with residual-like connection
+		self.feature_projection = nn.Sequential(
+			nn.AdaptiveAvgPool1d(32),  # Fixed size output
+			nn.Flatten(),
+			nn.Linear(actual_output_channels * 32, 256),
+			nn.ReLU(),
+			nn.Dropout(dropout),
+			nn.Linear(256, 2 * output_dim)
+		)
+		
+		self.apply(self._init_weights)
+	
+	def _init_weights(self, module):
+		"""Initialize weights for stable multi-task training."""
+		if isinstance(module, nn.Linear):
+			nn.init.xavier_normal_(module.weight, gain=0.8)  # Conservative gain for MTL
+			if module.bias is not None:
+				nn.init.zeros_(module.bias)
+		elif isinstance(module, nn.Conv1d):
+			nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+			if module.bias is not None:
+				nn.init.zeros_(module.bias)
+	
+	def forward(self, x):
+		"""
+		Forward pass through task-adaptive encoder.
+		Args:
+			x (torch.Tensor): Input of shape (batch_size, 2, slice_size)
+		Returns:
+			torch.Tensor: Features of shape (batch_size, 2, output_dim)
+		"""
+		# Process through convolutional blocks
+		for layer in self.layers:
+			x = layer(x)
+		
+		# Final feature projection
+		features = self.feature_projection(x)
+		return features.view(features.size(0), 2, self.output_dim)
 
 
 

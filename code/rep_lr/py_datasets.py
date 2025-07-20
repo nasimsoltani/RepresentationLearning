@@ -38,7 +38,7 @@ def read_file(file_path, max_cfo):
 	new_filepath += new_filename
 	content = loadmat(new_filepath)
 	CFO_input = torch.from_numpy(content['LSTF'])[:,0]
-	CFO_output = torch.from_numpy(content['CFO'])
+	CFO_output = torch.from_numpy(content['CFO']).float().squeeze()  # Fix dtype and shape
 	# for Channel Estimation filepath
 	new_filename = '/ChannelEstimation'+suffix_filename
 	new_filepath = ''
@@ -127,7 +127,7 @@ class TrainDataset(Dataset):
 
 			#print(RF_X.shape, RF_y, CFO_y.shape, Channel_X.shape, Channel_y.shape)
 			
-			CFO_y = (CFO_y - self.mean_cfo)/self.std_cfo
+			CFO_y = ((CFO_y - self.mean_cfo)/self.std_cfo).float()  # Ensure float dtype and proper shape
 			#print(CFO_y)
 
 			return RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y, file_path
@@ -156,7 +156,7 @@ class TrainDataset(Dataset):
 
 			#CFO_y = CFO_y/self.max_cfo
 			
-			CFO_y = (CFO_y - self.mean_cfo)/self.std_cfo
+			CFO_y = ((CFO_y - self.mean_cfo)/self.std_cfo).float()  # Ensure float dtype and proper shape
 			#print(CFO_y)
 
 

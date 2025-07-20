@@ -80,6 +80,8 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                             labels = labels.long()
                         else:
                             labels = labels.float()
+                            if task == 'cfo_estimation':
+                                labels = labels.view(-1, 1)  # Fix shape for CFO: [B] -> [B, 1]
 
                         
                         
@@ -138,13 +140,20 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                             labels = labels.long()
                         else:
                             labels = labels.float()
+                            if args.task == 'cfo_estimation':
+                                labels = labels.view(-1, 1)  # Fix shape for CFO: [B] -> [B, 1]
 
                         optimizer.zero_grad()
 
                         # Correctly access modules from the ModuleDict
                         x = model['projection'](inputs)
-                        x = model['encoder'](x)
-                        outputs = model['head'](x)
+                        
+                        # For direct CFO, skip encoder and use projected data directly
+                        if args.task == 'cfo_estimation' and args.direct_cfo:
+                            outputs = model['head'](x)  # Direct: projection -> head
+                        else:
+                            x = model['encoder'](x)     # Normal: projection -> encoder -> head
+                            outputs = model['head'](x)
 
                         loss = loss_fn(outputs, labels)
                         
@@ -165,8 +174,10 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
 
                         #Log average of Y_true to wandb for debugging
                         wandb.log({'train/y_true_mean': torch.mean(labels).item()}, step=epoch)
-                        #Log norm of gradients to wandb for debugging
-                        wandb.log({'train/grad_norm': torch.norm(torch.stack([p.grad.norm() for p in model.parameters()])).item()}, step=epoch)
+                        #Log norm of gradients to wandb for debugging (only for params with gradients)
+                        grad_norms = [p.grad.norm() for p in model.parameters() if p.grad is not None]
+                        if grad_norms:
+                            wandb.log({'train/grad_norm': torch.norm(torch.stack(grad_norms)).item()}, step=epoch)
 
                         if args.task == 'rf_fingerprinting':
                             _, predicted = torch.max(outputs.data, 1)
@@ -226,6 +237,8 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                                 labels = labels.long()
                             else:
                                 labels = labels.float()
+                                if task == 'cfo_estimation':
+                                    labels = labels.view(-1, 1)  # Fix shape for CFO: [B] -> [B, 1]
                             
                             outputs = model['heads'][task](encoded)
                             task_loss = loss_fn[task](outputs, labels)
@@ -270,11 +283,18 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                                 labels = labels.long()
                             else:
                                 labels = labels.float()
+                                if args.task == 'cfo_estimation':
+                                    labels = labels.view(-1, 1)  # Fix shape for CFO: [B] -> [B, 1]
 
                             # Correctly access modules from the ModuleDict
                             x = model['projection'](inputs)
-                            x = model['encoder'](x)
-                            outputs = model['head'](x)
+                            
+                            # For direct CFO, skip encoder and use projected data directly
+                            if args.task == 'cfo_estimation' and args.direct_cfo:
+                                outputs = model['head'](x)  # Direct: projection -> head
+                            else:
+                                x = model['encoder'](x)     # Normal: projection -> encoder -> head
+                                outputs = model['head'](x)
 
                             loss = loss_fn(outputs, labels)
                             

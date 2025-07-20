@@ -14,7 +14,8 @@ import torch.optim
 from torch.utils.data import Dataset, DataLoader, random_split
 from py_datasets import TrainDataset
 from models import (ComplexSequenceProjector, UpsamplingProjector, Encoder, 
-                   RFClassificationHead, ChannelEstimationHead, CFOEstimationHead)
+                   RFClassificationHead, ChannelEstimationHead, CFOEstimationHead, SimpleCFOEstimationHead, DirectCFOEstimationHead,
+                   CFOAdaptiveHead, TaskAdaptiveEncoder)
 
 import warnings
 import wandb
@@ -52,7 +53,15 @@ def main():
     parser.add_argument('--head_hidden_dim', type=int, default=256,
                         help='Hidden dimension for task head.')
     parser.add_argument('--encoder_num_blocks', type=int, default=1,
-                        help='Number of convolutional blocks in the encoder.')
+                        help='Number of convolutional blocks in the encoder. Use 1 for simple tasks, 3-5 for complex tasks.')
+    parser.add_argument('--simple_cfo', action='store_true',
+                        help='Use simplified CFO head (recommended for debugging).')
+    parser.add_argument('--direct_cfo', action='store_true',
+                        help='Use direct CFO path that bypasses encoder (recommended if encoder issues).')
+    parser.add_argument('--adaptive_cfo', action='store_true',
+                        help='Use CFO-adaptive head for better MTL performance.')
+    parser.add_argument('--task_adaptive_encoder', action='store_true',
+                        help='Use task-adaptive encoder designed for multi-task learning. Works with variable encoder_num_blocks.')
     
     # MTL arguments
     parser.add_argument('--mtl', action='store_true', help='Enable Multi-Task Learning.')
@@ -113,8 +122,6 @@ def main():
     max_cfo = content['max_cfo']
     mean_cfo = content['mean_cfo']
     std_cfo = content['std_cfo']
-
-
     
     dataset_args = argparse.Namespace(slice_len=args.slice_len)
     train_dataset = TrainDataset(train_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo)
@@ -158,13 +165,26 @@ def main():
 
             elif task == 'cfo_estimation':
                 seq_len = 160
-                # Use UpsamplingProjector for CFO to preserve sequence structure
-                projections[task] = UpsamplingProjector(output_seq_len=args.proj_seq_len)
-                heads[task] = CFOEstimationHead(input_dim=2*args.d2, hidden_dim=args.head_hidden_dim, dropout=args.dropout)
-                loss_fns[task] = nn.MSELoss() #nn.HuberLoss()
+                # Use ComplexSequenceProjector for CFO to enable better feature extraction
+                projections[task] = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=args.proj_seq_len, hidden_dim=args.proj_hidden_dim)
+                
+                # Choose CFO head based on arguments
+                if args.adaptive_cfo:
+                    heads[task] = CFOAdaptiveHead(input_dim=2*args.d2, hidden_dim=128, dropout=0.1)
+                elif args.simple_cfo:
+                    heads[task] = SimpleCFOEstimationHead(input_dim=2*args.d2, hidden_dim=64, dropout=0.1)
+                else:
+                    heads[task] = CFOEstimationHead(input_dim=2*args.d2, hidden_dim=args.head_hidden_dim, dropout=args.dropout)
+                
+                loss_fns[task] = nn.HuberLoss(delta=0.1)  # More robust to outliers than MSE
 
-
-        encoder = Encoder(slice_size=args.proj_seq_len, output_dim=args.d2, dropout=args.dropout, num_blocks=args.encoder_num_blocks)
+        # Choose encoder based on arguments (MTL)
+        if args.task_adaptive_encoder:
+            print(f"Using TaskAdaptiveEncoder with {args.encoder_num_blocks} blocks")
+            encoder = TaskAdaptiveEncoder(slice_size=args.proj_seq_len, output_dim=args.d2, dropout=args.dropout, num_blocks=args.encoder_num_blocks)
+        else:
+            print(f"Using standard Encoder with {args.encoder_num_blocks} blocks")
+            encoder = Encoder(slice_size=args.proj_seq_len, output_dim=args.d2, dropout=args.dropout, num_blocks=args.encoder_num_blocks)
         
         model = nn.ModuleDict({
             'projections': projections,
@@ -188,13 +208,19 @@ def main():
         
         # Create projection layer
         if args.task == 'cfo_estimation':
-            projection = UpsamplingProjector(output_seq_len=args.proj_seq_len)
+            seq_len = 160  # CFO input length
+            projection = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=args.proj_seq_len, hidden_dim=args.proj_hidden_dim)
         else:
             seq_len = args.slice_len if args.task == 'rf_fingerprinting' else 160
             projection = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=args.proj_seq_len, hidden_dim=args.proj_hidden_dim)
 
         # Create encoder (common for all tasks)
-        encoder = Encoder(slice_size=args.proj_seq_len, output_dim=args.d2, dropout=args.dropout, num_blocks=args.encoder_num_blocks)
+        if args.task_adaptive_encoder:
+            print(f"Using TaskAdaptiveEncoder with {args.encoder_num_blocks} blocks")
+            encoder = TaskAdaptiveEncoder(slice_size=args.proj_seq_len, output_dim=args.d2, dropout=args.dropout, num_blocks=args.encoder_num_blocks)
+        else:
+            print(f"Using standard Encoder with {args.encoder_num_blocks} blocks")
+            encoder = Encoder(slice_size=args.proj_seq_len, output_dim=args.d2, dropout=args.dropout, num_blocks=args.encoder_num_blocks)
 
         # Task-specific head and loss function
         if args.task == 'rf_fingerprinting':
@@ -221,12 +247,31 @@ def main():
             loss_fn = complex_mse_loss
             
         elif args.task == 'cfo_estimation':
-            task_head = CFOEstimationHead(
-                input_dim=2*args.d2,
-                hidden_dim=args.head_hidden_dim,
-                dropout=args.dropout
-            )
-            loss_fn = nn.MSELoss() # nn.HuberLoss()
+            if args.direct_cfo:
+                task_head = DirectCFOEstimationHead(
+                    input_seq_len=args.proj_seq_len,
+                    hidden_dim=128,
+                    dropout=0.1
+                )
+            elif args.adaptive_cfo:
+                task_head = CFOAdaptiveHead(
+                    input_dim=2*args.d2,
+                    hidden_dim=128,
+                    dropout=0.1
+                )
+            elif args.simple_cfo:
+                task_head = SimpleCFOEstimationHead(
+                    input_dim=2*args.d2,
+                    hidden_dim=64,
+                    dropout=0.1
+                )
+            else:
+                task_head = CFOEstimationHead(
+                    input_dim=2*args.d2,
+                    hidden_dim=args.head_hidden_dim,
+                    dropout=args.dropout
+                )
+            loss_fn = nn.HuberLoss(delta=0.1)  # More robust to outliers than MSE
             
         else:
             raise ValueError(f"Unknown task: {args.task}")
