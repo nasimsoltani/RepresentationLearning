@@ -30,21 +30,23 @@ class ActivationDataset(Dataset):
         if not os.path.isdir(self.activation_dir):
             raise ValueError(f"Activation directory not found: {self.activation_dir}")
 
-        # For faster lookups, create a map of available activation files.
-        # Key: base filename (e.g., 'RFfingerprinting_..._123.mat')
-        # Value: full path to the corresponding .pth file
-        self.activation_map = {
-            f.replace('.pth', '.mat'): os.path.join(self.activation_dir, f)
-            for f in os.listdir(self.activation_dir) if f.endswith('.pth')
-        }
+        # Create a set of available activation file basenames for quick lookups
+        available_activations = {os.path.basename(f) for f in os.listdir(self.activation_dir) if f.endswith('.pth')}
+        
+        # Build the activation map based on the provided file_list
+        self.activation_map = {}
+        for mat_path in self.file_list:
+            base_name = os.path.basename(mat_path).replace('.mat', '.pth')
+            if base_name in available_activations:
+                self.activation_map[os.path.basename(mat_path)] = os.path.join(self.activation_dir, base_name)
 
         if not self.activation_map:
-            raise ValueError(f"No .pth files found in {self.activation_dir}")
+            raise ValueError(f"No '.pth' activation files in {self.activation_dir} correspond to the files in file_list.")
 
         if not self.test_mode:
             random.shuffle(self.file_list)
 
-        print(f"Initialized dataset with {len(self.file_list)} files. Found {len(self.activation_map)} activations in {self.activation_dir}.")
+        print(f"Initialized dataset with {len(self.file_list)} files. Found and mapped {len(self.activation_map)} activations.")
 
     def __len__(self):
         return len(self.file_list)
@@ -80,4 +82,6 @@ class ActivationDataset(Dataset):
         activation = data['activation']
         original_filename = data['filename']
         
+        #print(f"[py_datasets.py->__getitem__] Loaded data for {original_filename}. Shapes: RF_X={rf_x.shape}, CFO_X={cfo_x.shape}, Channel_X={channel_x.shape}, activation={activation.shape}")
+
         return rf_x, rf_y, cfo_x, cfo_y, channel_x, channel_y, activation, original_filename 

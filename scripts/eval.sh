@@ -16,7 +16,7 @@
 # --- Configuration ---
 # IMPORTANT: SET THIS PATH to the '.pt' file of your trained model.
 # This should be a file like `..._best.pt` or `..._epoch_xx.pt` from your results folder.
-MODEL_PATH="/home/hofmann/Documents/projects/RepresentationLearning/results_20250617_233353" # <-- CHANGE THIS
+MODEL_PATH="/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_134858" # <-- CHANGE THIS
 
 # IMPORTANT: SET THIS to the path of the .pkl dataset to use for this evaluation.
 EVAL_DATASET_PATH="/home/hofmann/Documents/projects/RepresentationLearning/dataset/rf_partition_dict_0.5.pkl" # <-- CHANGE THIS

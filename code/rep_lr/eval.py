@@ -12,19 +12,14 @@ import random
 import re
 
 from models import (ComplexSequenceProjector, UpsamplingProjector, Encoder, 
-                   RFClassificationHead, ChannelEstimationHead, CFOEstimationHead)
+                   RFClassificationHead, ChannelEstimationHead, CFOEstimationHead,
+                   SimpleCFOEstimationHead, DirectCFOEstimationHead, CFOAdaptiveHead, TaskAdaptiveEncoder)
 from py_datasets import TrainDataset
 from torch.utils.data import DataLoader
 
 def evaluate_rf_fingerprinting(model, test_dl, device, output_dir, class_names, args):
     is_mtl = getattr(args, 'mtl', False)
-    if not is_mtl:
-        projection = model['projection']
-        encoder = model['encoder']
-        task_head = model['head']
-    else:
-        projection, encoder, task_head = model['projection'], model['encoder'], model['head']
-
+    
     y_true = []
     y_pred = []
     evaluation_results = []
@@ -59,9 +54,9 @@ def evaluate_rf_fingerprinting(model, test_dl, device, output_dir, class_names, 
                     encoded = model['encoder'](projected_sum)
                     output = model['heads']['rf_fingerprinting'](encoded)
                 else:
-                    x = projection(input_slices)
-                    x = encoder(x)
-                    output = task_head(x)
+                    x = model['projection'](input_slices)
+                    x = model['encoder'](x)
+                    output = model['head'](x)
                 slice_outputs.append(output)
             
             all_slice_outputs = torch.cat(slice_outputs)
@@ -170,12 +165,6 @@ def plot_distance_vs_accuracy(predictions_path):
 
 def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, mean_cfo, std_cfo, args):
     is_mtl = getattr(args, 'mtl', False)
-    if not is_mtl:
-        projection = model['projection']
-        encoder = model['encoder']
-        task_head = model['head']
-    else:
-        projection, encoder, task_head = model['projection'], model['encoder'], model['head']
     
     y_true = []
     y_pred = []
@@ -205,12 +194,23 @@ def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, mean_cf
                     else:
                         projected_sum += model['projections'][task_name](task_inputs)
                 
-                encoded = model['encoder'](projected_sum)
-                outputs = model['heads']['cfo_estimation'](encoded)
+                # For MTL, direct CFO is not typically used, but handle it just in case
+                if getattr(args, 'direct_cfo', False):
+                    # Extract just the CFO projection for direct processing
+                    cfo_projection = model['projections']['cfo_estimation'](inputs)
+                    outputs = model['heads']['cfo_estimation'](cfo_projection)
+                else:
+                    encoded = model['encoder'](projected_sum)
+                    outputs = model['heads']['cfo_estimation'](encoded)
             else:
-                x = projection(inputs)
-                x = encoder(x)
-                outputs = task_head(x)
+                x = model['projection'](inputs)
+                
+                # For single-task, check if using direct CFO (bypassing encoder)
+                if getattr(args, 'direct_cfo', False):
+                    outputs = model['head'](x)  # Direct: projection -> head
+                else:
+                    x = model['encoder'](x)          # Normal: projection -> encoder -> head
+                    outputs = model['head'](x)
             
             true_val = labels.item()
             pred_val = outputs.item()
@@ -292,10 +292,6 @@ def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, mean_cf
 
 def evaluate_channel_estimation(model, test_dl, device, output_dir, args):
     is_mtl = getattr(args, 'mtl', False)
-    if not is_mtl:
-        projection, encoder, task_head = model['projection'], model['encoder'], model['head']
-    else:
-        projection, encoder, task_head = model['projection'], model['encoder'], model['head']
 
     
     all_y_true = []
@@ -328,9 +324,9 @@ def evaluate_channel_estimation(model, test_dl, device, output_dir, args):
                 encoded = model['encoder'](projected_sum)
                 outputs = model['heads']['channel_estimation'](encoded)
             else:
-                x = projection(inputs)
-                x = encoder(x)
-                outputs = task_head(x)
+                x = model['projection'](inputs)
+                x = model['encoder'](x)
+                outputs = model['head'](x)
 
             true_val = labels.cpu().numpy()[0]
             pred_val = outputs.cpu().numpy()[0]
@@ -548,9 +544,21 @@ def main():
             elif task == 'cfo_estimation':
                 seq_len = 160
                 projections[task] = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
-                heads[task] = CFOEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
+                
+                # Choose CFO head based on training arguments
+                if getattr(train_args, 'adaptive_cfo', False):
+                    heads[task] = CFOAdaptiveHead(input_dim=2*train_args.d2, hidden_dim=128, dropout=0.1)
+                elif getattr(train_args, 'simple_cfo', False):
+                    heads[task] = SimpleCFOEstimationHead(input_dim=2*train_args.d2, hidden_dim=64, dropout=0.1)
+                else:
+                    heads[task] = CFOEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
 
-        encoder = Encoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout, num_blocks=encoder_num_blocks)
+        # Choose encoder based on training arguments (MTL)
+        if getattr(train_args, 'task_adaptive_encoder', False):
+            print("Using task-adaptive encoder.")
+            encoder = TaskAdaptiveEncoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout, num_blocks=encoder_num_blocks)
+        else:
+            encoder = Encoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout, num_blocks=encoder_num_blocks)
         
         model = torch.nn.ModuleDict({
             'projections': projections,
@@ -563,19 +571,33 @@ def main():
         
         # Create projection layer based on task
         if task_name == 'cfo_estimation':
-            projection = UpsamplingProjector(output_seq_len=train_args.proj_seq_len)
+            # Use ComplexSequenceProjector for CFO (updated from UpsamplingProjector)
+            seq_len = 160  # CFO input length
+            projection = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
         else:
             seq_len = train_args.slice_len if task_name == 'rf_fingerprinting' else 160
             projection = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
         
-        encoder = Encoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout, num_blocks=encoder_num_blocks)
+        # Choose encoder based on training arguments (Single-task)
+        if getattr(train_args, 'task_adaptive_encoder', False):
+            encoder = TaskAdaptiveEncoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout, num_blocks=encoder_num_blocks)
+        else:
+            encoder = Encoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout, num_blocks=encoder_num_blocks)
 
         if task_name == 'rf_fingerprinting':
             task_head = RFClassificationHead(input_dim=2*train_args.d2, num_classes=num_classes, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
         elif task_name == 'channel_estimation':
             task_head = ChannelEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, output_length=52, dropout=train_args.dropout)
         elif task_name == 'cfo_estimation':
-            task_head = CFOEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
+            # Choose CFO head based on training arguments
+            if getattr(train_args, 'direct_cfo', False):
+                task_head = DirectCFOEstimationHead(input_seq_len=train_args.proj_seq_len, hidden_dim=128, dropout=0.1)
+            elif getattr(train_args, 'adaptive_cfo', False):
+                task_head = CFOAdaptiveHead(input_dim=2*train_args.d2, hidden_dim=128, dropout=0.1)
+            elif getattr(train_args, 'simple_cfo', False):
+                task_head = SimpleCFOEstimationHead(input_dim=2*train_args.d2, hidden_dim=64, dropout=0.1)
+            else:
+                task_head = CFOEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
         else:
             raise ValueError(f"Unknown task: {task_name}")
 
@@ -601,14 +623,10 @@ def main():
             model_state_dict = checkpoint['model_state_dict']
             
             # For CFO estimation with UpsamplingProjector, filter out projection keys since it has no parameters
-            if train_args.task == 'cfo_estimation':
-                filtered_state_dict = {}
-                for key, value in model_state_dict.items():
-                    if not key.startswith('projection.'):
-                        filtered_state_dict[key] = value
-                model.load_state_dict(filtered_state_dict, strict=False)
-            else:
-                model.load_state_dict(model_state_dict)
+            # The new models (both single and MTL) are saved with a consistent 
+            # ModuleDict structure, so we can load the state dict directly.
+            # The old filtering logic for legacy models is no longer needed.
+            model.load_state_dict(model_state_dict)
         
         # Format for models where each module is saved separately
         elif 'projection_state_dict' in checkpoint and 'encoder_state_dict' in checkpoint and 'head_state_dict' in checkpoint:
@@ -639,7 +657,7 @@ def main():
         task_valid = False
         if task == 'rf_fingerprinting' and isinstance(task_head, RFClassificationHead):
             task_valid = True
-        elif task == 'cfo_estimation' and isinstance(task_head, CFOEstimationHead):
+        elif task == 'cfo_estimation' and isinstance(task_head, (CFOEstimationHead, SimpleCFOEstimationHead, DirectCFOEstimationHead, CFOAdaptiveHead)):
             task_valid = True
         elif task == 'channel_estimation' and isinstance(task_head, ChannelEstimationHead):
             task_valid = True
@@ -647,6 +665,8 @@ def main():
         if not task_valid:
             print(f"Warning: Mismatched model head for task '{task}'. Head is {type(task_head).__name__}. Skipping.")
             continue
+        else:
+            print(f"Using {type(task_head).__name__} for task '{task}'.")
 
         if task == 'rf_fingerprinting':
             evaluate_rf_fingerprinting(model, test_dl, device, model_dir, list(ID_class_dict.keys()), train_args)
