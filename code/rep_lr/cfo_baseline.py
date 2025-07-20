@@ -21,7 +21,8 @@ from py_datasets import TrainDataset
 
 import os 
 
-os.environ['PKL_DATASET_PATH'] = '/home/hofmann/Documents/projects/RepresentationLearning/dataset/rf_partition_dict_0.5.pkl'
+os.environ['PKL_DATASET_PATH'] = '/scratch/10608/aadharsh_aadhithya/data/rep_lr/OracleDatasetProcessed-arranged/rf_partition_dict_0.5.pkl'
+#os.environ['PKL_DATASET_PATH'] = '/home/hofmann/Documents/projects/RepresentationLearning/dataset/rf_partition_dict_0.5.pkl'
 
 class SimpleNN(nn.Module):
     """
