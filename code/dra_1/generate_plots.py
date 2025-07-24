@@ -337,88 +337,26 @@ def evaluate_channel_utility(head, test_dl, device, output_dir, noise_level, L=N
     print(f"Channel metrics and predictions saved in {output_dir}")
 
 
-def main():
-    parser = argparse.ArgumentParser(description='Evaluate utility of task heads on latent representations.')
-    parser.add_argument('--experiment_path', type=str, required=True, help='Path to the experiment results directory, containing the model checkpoint and an "activations" subdirectory.')
-    # parser.add_argument('--model_path', type=str, required=True, help='Path to the trained model checkpoint (.pt file).')
-    # parser.add_argument('--activation_dir', type=str, required=True, help="Directory containing pre-computed activation files.")
-    # parser.add_argument('--partition_file', type=str, required=True, help="Path to the data partition file.")
-    parser.add_argument('--output_dir', type=str, default=None, help="Optional: Base directory for evaluation results. Defaults to [experiment_path]/utility_exps.")
-    parser.add_argument('--noise_type', type=str, default='isotropic', choices=['isotropic', 'nonisotropic', 'none'], help="Type of noise to inject.")
-    parser.add_argument('--noise_level', type=float, default=0.0, help="Strength of the noise to be applied.")
-    parser.add_argument('--fim_samples', type=int, default=1000, help="Number of samples to use for FIM calculation for nonisotropic noise.")
-    parser.add_argument('--gpu_id', default=0, type=int, help='ID of GPU to be used.')
-    parser.add_argument('--batch_size', type=int, default=64, help="Batch size for evaluation.")
-    cli_args = parser.parse_args()
-
-    # Determine the final output directory path
-    base_output_dir = cli_args.output_dir
-    if base_output_dir is None:
-        base_output_dir = os.path.join(cli_args.experiment_path, 'utility_exps')
-    
-    noise_level_str = f"level_{str(cli_args.noise_level).replace('.', '_')}"
-    cli_args.output_dir = os.path.join(base_output_dir, cli_args.noise_type, noise_level_str)
-
-    os.makedirs(cli_args.output_dir, exist_ok=True)
-    print(f"Saving utility results to: {cli_args.output_dir}")
+def run_all_evaluations(cli_args, heads, test_dl, train_files, activation_dir, mean_cfo, std_cfo, id_class_dict):
+    """
+    Run evaluations for all noise levels and types, generating JSON files.
+    """
     device = torch.device(f'cuda:{cli_args.gpu_id}' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
+    noise_levels = np.linspace(0, 10, 11)  # 0, 1, 2, ..., 10
+    noise_types = ['isotropic', 'nonisotropic']
 
-    # ---- Load model and setup ----
-    experiment_path = cli_args.experiment_path
-
-    # Load model using the new utility
-    model_data = load_model_for_utility_check(experiment_path, device)
-    model = model_data['model']
-    train_args = model_data['train_args']
-    is_mtl = model_data['is_mtl']
-    
-    # Extract heads from the loaded model
-    heads = model['heads'] if 'heads' in model else {train_args.task: model['head']}
-    
-    print(f"Model loaded successfully. MTL: {is_mtl}")
-
-    # Set activation directory
-    activation_dir = os.path.join(experiment_path, 'activations')
-    if not os.path.isdir(activation_dir):
-        raise FileNotFoundError(f"'activations' directory not found in {experiment_path}. Expected it at: {activation_dir}")
-    print(f"Found activations directory: {activation_dir}")
-
-    partition_file = train_args.pkl_dataset_path
-    print(f"Using partition file from training args: {partition_file}")
-
-    # Load metadata from the main dataset pickle
-    with open(partition_file, 'rb') as handle:
-        content = pickle.load(handle)
-    mean_cfo, std_cfo = content.get('mean_cfo', 0), content.get('std_cfo', 1)
-
-    # Load file lists from partition
-    with open(partition_file, 'rb') as f:
-        partitions = pickle.load(f)
-    train_files = partitions.get('train')
-    test_files = partitions.get('test')
-    if not test_files:
-        raise ValueError("Could not find 'test' key in the partition file.")
-
-    test_dataset = ActivationDataset(activation_dir=activation_dir, file_list=test_files, test_mode=True)
-    test_dl = DataLoader(test_dataset, batch_size=cli_args.batch_size, shuffle=False, num_workers=4)
-
-    ID_class_dict = {f'Radio{i}': i for i in range(16)}
-    num_classes = len(ID_class_dict)
-
-    print("Heads loaded successfully.")
-
+    # --- Pre-calculate FIM for all tasks (non-isotropic noise) ---
     L, V = None, None
-    if cli_args.noise_type == 'nonisotropic':
-        print("\n===== Calculating FIM for Anisotropic Noise =====")
+    if 'nonisotropic' in noise_types:
+        print("\n===== Pre-calculating FIM for Anisotropic Noise =====")
         if not train_files:
             raise ValueError("Training files are required for FIM calculation but not found in partition.")
         
         # Use a subset of training data for FIM
         random.shuffle(train_files)
         fim_files = train_files[:cli_args.fim_samples]
-        fim_dataset = ActivationDataset(activation_dir=activation_dir, file_list=fim_files, test_mode=False) # Important: test_mode=False to get all labels
-        fim_dl = DataLoader(fim_dataset, batch_size=cli_args.batch_size, shuffle=False)
+        fim_dataset = ActivationDataset(activation_dir=activation_dir, file_list=fim_files, test_mode=False)
+        fim_dl = DataLoader(fim_dataset, batch_size=cli_args.batch_size, shuffle=True)
         
         latent_dim = list(heads.values())[0].input_dim
         total_fim = torch.zeros((latent_dim, latent_dim), device=device)
@@ -430,18 +368,144 @@ def main():
             
         print("Performing eigendecomposition of total FIM...")
         L_e, V = torch.linalg.eigh(total_fim)
-        L = torch.relu(L_e) # Ensure non-negative eigenvalues
+        L = torch.relu(L_e)  # Ensure non-negative eigenvalues
         print("FIM calculation and decomposition complete.")
 
+    # --- Run evaluation loop ---
+    for noise_type in noise_types:
+        for noise_level in tqdm(noise_levels, desc=f"Evaluating {noise_type} noise"):
+            
+            # Skip FIM-based evaluation if data is not available
+            if noise_type == 'nonisotropic' and L is None:
+                continue
+
+            # Determine the final output directory path
+            base_output_dir = cli_args.output_dir
+            if base_output_dir is None:
+                base_output_dir = os.path.join(cli_args.experiment_path, 'utility_exps')
+            
+            noise_level_str = f"level_{str(noise_level).replace('.', '_')}"
+            output_dir = os.path.join(base_output_dir, noise_type, noise_level_str)
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Run evaluation for all tasks
+            for task_name, task_head in heads.items():
+                print(f"\n===== Evaluating Task: {task_name} (Noise: {noise_type}, Level: {noise_level}) =====")
+                print(f"Saving results to: {output_dir}")
+                
+                if task_name == 'rf_fingerprinting':
+                    evaluate_rf_utility(task_head, test_dl, device, output_dir, list(id_class_dict.keys()), noise_level, L, V, noise_type)
+                elif task_name == 'cfo_estimation':
+                    evaluate_cfo_utility(task_head, test_dl, device, output_dir, mean_cfo, std_cfo, noise_level, L, V, noise_type)
+                elif task_name == 'channel_estimation':
+                    evaluate_channel_utility(task_head, test_dl, device, output_dir, noise_level, L, V, noise_type)
     
-    for task_name, task_head in heads.items():
-        print(f"\n===== Evaluating Task: {task_name} (Noise Level: {cli_args.noise_level}) =====")
-        if task_name == 'rf_fingerprinting':
-            evaluate_rf_utility(task_head, test_dl, device, cli_args.output_dir, list(ID_class_dict.keys()), cli_args.noise_level, L, V, cli_args.noise_type)
-        elif task_name == 'cfo_estimation':
-            evaluate_cfo_utility(task_head, test_dl, device, cli_args.output_dir, mean_cfo, std_cfo, cli_args.noise_level, L, V, cli_args.noise_type)
-        elif task_name == 'channel_estimation':
-            evaluate_channel_utility(task_head, test_dl, device, cli_args.output_dir, cli_args.noise_level, L, V, cli_args.noise_type)
+    print("\nAll evaluations complete.")
+    return base_output_dir
+
+
+def collect_results_and_plot(base_output_dir, tasks):
+    """
+    Collect all generated JSON results and create plots.
+    """
+    print("\n--- Collecting results and generating plots ---")
+    results = {task: {'isotropic': [], 'nonisotropic': []} for task in tasks}
+    noise_levels = np.linspace(0, 10, 11)
+
+    for noise_type in ['isotropic', 'nonisotropic']:
+        for noise_level in noise_levels:
+            noise_level_str = f"level_{str(noise_level).replace('.', '_')}"
+            results_dir = os.path.join(base_output_dir, noise_type, noise_level_str)
+
+            for task in tasks:
+                metric = 0.0
+                if task == 'rf_fingerprinting':
+                    filepath = os.path.join(results_dir, 'rf_classification_report.json')
+                    if os.path.exists(filepath):
+                        with open(filepath, 'r') as f:
+                            report = json.load(f)
+                            metric = report['accuracy']
+                elif task == 'cfo_estimation':
+                    filepath = os.path.join(results_dir, 'cfo_metrics.json')
+                    if os.path.exists(filepath):
+                        with open(filepath, 'r') as f:
+                            metric = json.load(f)['r2_score']
+                elif task == 'channel_estimation':
+                    filepath = os.path.join(results_dir, 'channel_metrics.json')
+                    if os.path.exists(filepath):
+                        with open(filepath, 'r') as f:
+                            # Average the R² of real and imaginary parts
+                            m = json.load(f)
+                            metric = (m['real_part']['r2_score'] + m['imaginary_part']['r2_score']) / 2.0
+                
+                results[task][noise_type].append(metric)
+
+    # --- Plotting ---
+    plt.style.use('seaborn-v0_8-darkgrid')
+    colors = plt.cm.get_cmap('viridis', 4)
+
+    for task, data in results.items():
+        plt.figure(figsize=(12, 7))
+        metric_name = 'Accuracy' if task == 'rf_fingerprinting' else 'R² Score'
+        
+        plt.plot(noise_levels, data['isotropic'], 'o-', color=colors(0.3), linewidth=2, markersize=8, label='Isotropic Noise')
+        plt.plot(noise_levels, data['nonisotropic'], 's--', color=colors(0.7), linewidth=2, markersize=8, label='Non-isotropic Noise')
+
+        plt.title(f'{task.replace("_", " ").title()} Utility vs Noise Level', fontsize=16, fontweight='bold')
+        plt.xlabel('Noise Level', fontsize=14)
+        plt.ylabel(metric_name, fontsize=14)
+        plt.xticks(fontsize=12)
+        plt.yticks(fontsize=12)
+        plt.legend(fontsize=12)
+        plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+
+        plot_path = os.path.join(base_output_dir, f'{task}_utility_vs_noise.png')
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        print(f"Saved plot: {plot_path}")
+        plt.close()
+
+def main():
+    parser = argparse.ArgumentParser(description='Run utility evaluations across noise levels and plot results.')
+    parser.add_argument('--experiment_path', type=str, required=True, help='Path to the experiment results directory.')
+    parser.add_argument('--output_dir', type=str, default=None, help="Optional: Base directory for evaluation results. Defaults to [experiment_path]/utility_exps.")
+    parser.add_argument('--fim_samples', type=int, default=1000, help="Number of samples for FIM calculation.")
+    parser.add_argument('--gpu_id', default=0, type=int, help='ID of GPU to be used.')
+    parser.add_argument('--batch_size', type=int, default=256, help="Batch size for evaluation.")
+    parser.add_argument('--skip_eval', action='store_true', help="Skip evaluation, just collect and plot existing results.")
+    cli_args = parser.parse_args()
+
+    # ---- Load model and setup ----
+    device = torch.device(f'cuda:{cli_args.gpu_id}' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
+    
+    model_data = load_model_for_utility_check(cli_args.experiment_path, device)
+    model = model_data['model']
+    train_args = model_data['train_args']
+    is_mtl = model_data['is_mtl']
+    
+    heads = model['heads'] if is_mtl else {train_args.task: model['head']}
+    print(f"Model loaded. Heads to evaluate: {list(heads.keys())}")
+
+    activation_dir = os.path.join(cli_args.experiment_path, 'activations')
+    partition_file = train_args.pkl_dataset_path
+    
+    with open(partition_file, 'rb') as handle:
+        content = pickle.load(handle)
+    mean_cfo, std_cfo = content.get('mean_cfo', 0), content.get('std_cfo', 1)
+    train_files = content.get('train')
+    test_files = content.get('test')
+
+    test_dataset = ActivationDataset(activation_dir=activation_dir, file_list=test_files, test_mode=True)
+    test_dl = DataLoader(test_dataset, batch_size=cli_args.batch_size, shuffle=False, num_workers=4)
+    id_class_dict = {f'Radio{i}': i for i in range(16)}
+
+    # --- Run Evaluations ---
+    if not cli_args.skip_eval:
+        run_all_evaluations(cli_args, heads, test_dl, train_files, activation_dir, mean_cfo, std_cfo, id_class_dict)
+
+    # --- Collect and Plot Results ---
+    base_output_dir = cli_args.output_dir or os.path.join(cli_args.experiment_path, 'utility_exps')
+    collect_results_and_plot(base_output_dir, list(heads.keys()))
 
 if __name__ == '__main__':
     main() 

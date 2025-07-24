@@ -24,11 +24,15 @@ class ActivationDataset(Dataset):
             test_mode (bool): If False, the file_list is shuffled.
         """
         self.activation_dir = activation_dir
-        self.file_list = file_list
+        self.file_list = file_list.copy()  # Make a copy to avoid modifying the original
         self.test_mode = test_mode
 
         if not os.path.isdir(self.activation_dir):
             raise ValueError(f"Activation directory not found: {self.activation_dir}")
+
+        # Always shuffle to ensure class diversity, regardless of test_mode
+        # This is important because files are often ordered by class/radio ID
+        random.shuffle(self.file_list)
 
         # Create a set of available activation file basenames for quick lookups
         available_activations = {os.path.basename(f) for f in os.listdir(self.activation_dir) if f.endswith('.pth')}
@@ -42,9 +46,6 @@ class ActivationDataset(Dataset):
 
         if not self.activation_map:
             raise ValueError(f"No '.pth' activation files in {self.activation_dir} correspond to the files in file_list.")
-
-        if not self.test_mode:
-            random.shuffle(self.file_list)
 
         print(f"Initialized dataset with {len(self.file_list)} files. Found and mapped {len(self.activation_map)} activations.")
 

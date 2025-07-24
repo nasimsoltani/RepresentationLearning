@@ -16,8 +16,8 @@ from scipy.stats import pearsonr
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'rep_lr')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from rep_lr.models import ComplexSequenceProjector, Encoder, UpsamplingProjector
 from dra_1.py_datasets import ActivationDataset
+from dra_1.model_loader import load_model_for_attack
 
 def visualize_reconstruction(originals, reconstructions, task_names, save_path):
     """
@@ -69,55 +69,29 @@ def reconstruct_data(cli_args):
     print(f"Using device: {device}")
 
     # --- Load Model and Training Args ---
-    model_dir = os.path.dirname(cli_args.model_path)
-    args_path = os.path.join(model_dir, 'args.json')
-    if not os.path.exists(args_path):
-        raise FileNotFoundError(f"args.json not found in {model_dir}. Cannot determine model architecture.")
-    with open(args_path, 'r') as f:
-        train_args = argparse.Namespace(**json.load(f))
+    # Determine experiment directory from the model path
+    if os.path.isdir(cli_args.model_path):
+        experiment_dir = cli_args.model_path
+    else:
+        experiment_dir = os.path.dirname(cli_args.model_path)
 
-    # --- Re-create Model Architecture ---
-    is_mtl = getattr(train_args, 'mtl', False)
-    if not is_mtl:
-        raise ValueError("This attack script currently only supports MTL models.")
-
-    # Reconstruct projections and encoder
-    projections = torch.nn.ModuleDict()
-    TASKS = train_args.task
-    TASK_SEQ_LENS = {'rf_fingerprinting': train_args.slice_len, 'cfo_estimation': 160, 'channel_estimation': 160}
-
-    for task in TASKS:
-        if task == 'cfo_estimation':
-            # CFO estimation uses a parameter-free upsampling projector
-            projections[task] = UpsamplingProjector(output_seq_len=train_args.proj_seq_len)
-        else:
-            projections[task] = ComplexSequenceProjector(
-                input_seq_len=TASK_SEQ_LENS[task],
-                output_seq_len=train_args.proj_seq_len,
-                hidden_dim=train_args.proj_hidden_dim
-            )
-
-    encoder = Encoder(
-        slice_size=train_args.proj_seq_len,
-        output_dim=train_args.d2,
-        dropout=train_args.dropout,
-        num_blocks=getattr(train_args, 'encoder_num_blocks', 1)
-    )
-    
-    model = torch.nn.ModuleDict({'projections': projections, 'encoder': encoder}).to(device)
-    
-    # Load trained weights
-    print(f"Loading weights from {cli_args.model_path}")
-    checkpoint = torch.load(cli_args.model_path, map_location=device)
-    model['projections'].load_state_dict(checkpoint['projections_state_dict'], strict=False)
-    model['encoder'].load_state_dict(checkpoint['encoder_state_dict'])
-    model.eval()
+    # Load model using the new utility
+    model_data = load_model_for_attack(experiment_dir, device)
+    model = model_data['model']
+    train_args = model_data['train_args']
+    is_mtl = model_data['is_mtl']
     
     # Freeze model parameters
     for param in model.parameters():
         param.requires_grad = False
     
-    print("Model loaded and frozen successfully.")
+    print(f"Model loaded and frozen successfully. MTL: {is_mtl}")
+    
+    # Support both MTL and single-task models
+    if is_mtl:
+        TASKS = train_args.task
+    else:
+        TASKS = [train_args.task]
 
     # --- Load Data ---
     with open(cli_args.partition_file, 'rb') as f:
@@ -146,13 +120,27 @@ def reconstruct_data(cli_args):
             'channel_estimation': channel_x.cpu()
         }
         
-        # --- Simultaneous Reconstruction Setup ---
-        # Initialize all inputs as random tensors that require gradients
-        x_0_rf = torch.randn_like(rf_x, requires_grad=True, device=device)
-        x_0_cfo = torch.randn_like(cfo_x, requires_grad=True, device=device)
-        x_0_channel = torch.randn_like(channel_x, requires_grad=True, device=device)
+        # --- Reconstruction Setup ---
+        # Initialize inputs as random tensors that require gradients
+        if is_mtl:
+            # For MTL, optimize all inputs
+            x_0_rf = torch.randn_like(rf_x, requires_grad=True, device=device)
+            x_0_cfo = torch.randn_like(cfo_x, requires_grad=True, device=device)
+            x_0_channel = torch.randn_like(channel_x, requires_grad=True, device=device)
+            trainable_inputs = [x_0_rf, x_0_cfo, x_0_channel]
+        else:
+            # For single-task, only optimize the relevant input
+            task_name = TASKS[0]
+            if task_name == 'rf_fingerprinting':
+                x_0_rf = torch.randn_like(rf_x, requires_grad=True, device=device)
+                trainable_inputs = [x_0_rf]
+            elif task_name == 'cfo_estimation':
+                x_0_cfo = torch.randn_like(cfo_x, requires_grad=True, device=device)
+                trainable_inputs = [x_0_cfo]
+            elif task_name == 'channel_estimation':
+                x_0_channel = torch.randn_like(channel_x, requires_grad=True, device=device)
+                trainable_inputs = [x_0_channel]
 
-        trainable_inputs = [x_0_rf, x_0_cfo, x_0_channel]
         optimizer = optim.Adam(trainable_inputs, lr=cli_args.lr)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=100, factor=0.5, min_lr=1e-7)
 
@@ -162,26 +150,77 @@ def reconstruct_data(cli_args):
             optimizer.zero_grad()
             
             # --- Forward Pass ---
-            # Get projections of the current variable inputs
-            proj_rf = model['projections']['rf_fingerprinting'](x_0_rf.squeeze(1)).mean(dim=0, keepdim=True)
-            proj_cfo = model['projections']['cfo_estimation'](x_0_cfo.squeeze(1))
-            proj_channel = model['projections']['channel_estimation'](x_0_channel.squeeze(1))
-
-            # Combine projections and get the latent representation
-            projected_sum = proj_rf + proj_cfo + proj_channel
-            z_hat = model['encoder'](projected_sum)
+            if is_mtl:
+                # MTL model: use projections dict and sum projections
+                projected_tensors = []
+                task_data_map = {
+                    'rf_fingerprinting': x_0_rf.squeeze(1),
+                    'cfo_estimation': x_0_cfo.squeeze(1),
+                    'channel_estimation': x_0_channel.squeeze(1)
+                }
+                
+                for task_name in TASKS:
+                    inputs = task_data_map[task_name]
+                    if task_name == 'rf_fingerprinting':
+                        # MTL eval logic for RF averages projections across slices
+                        proj = model['projections'][task_name](inputs)
+                        projected_tensors.append(proj.mean(dim=0, keepdim=True))
+                    else:
+                        proj = model['projections'][task_name](inputs)
+                        projected_tensors.append(proj)
+                
+                projected_sum = torch.sum(torch.stack(projected_tensors), dim=0)
+                z_hat = model['encoder'](projected_sum)
+            else:
+                # Single-task model: use projection and encoder directly
+                task_name = TASKS[0]  # Single task
+                if task_name == 'rf_fingerprinting':
+                    inputs = x_0_rf.squeeze(1)
+                elif task_name == 'cfo_estimation':
+                    inputs = x_0_cfo.squeeze(1)
+                elif task_name == 'channel_estimation':
+                    inputs = x_0_channel.squeeze(1)
+                
+                projected = model['projection'](inputs)
+                
+                # Handle direct CFO case where encoder might be bypassed
+                if task_name == 'cfo_estimation' and getattr(train_args, 'direct_cfo', False):
+                    z_hat = projected  # Skip encoder for direct CFO
+                else:
+                    z_hat = model['encoder'](projected)
+                
+                if task_name == 'rf_fingerprinting':
+                    # Average the activations of all slices to get a single vector per file
+                    z_hat = z_hat.mean(dim=0, keepdim=True)
             
             # --- Calculate Losses ---
             reconstruction_loss = criterion(z_hat, z_true)
             
-            # L2 regularization on inputs
-            l2_reg = cli_args.regularization * (torch.norm(x_0_rf) + torch.norm(x_0_cfo) + torch.norm(x_0_channel))
+            # L2 regularization on inputs (only for variables being optimized)
+            l2_reg = 0
+            tv_reg = 0
             
-            # Total Variation (TV) regularization on inputs
-            tv_reg_rf = torch.sum(torch.abs(x_0_rf[:, :, :, 1:] - x_0_rf[:, :, :, :-1]))
-            tv_reg_cfo = torch.sum(torch.abs(x_0_cfo[:, :, 1:] - x_0_cfo[:, :, :-1]))
-            tv_reg_channel = torch.sum(torch.abs(x_0_channel[:, :, 1:] - x_0_channel[:, :, :-1]))
-            tv_reg = cli_args.tv_regularization * (tv_reg_rf + tv_reg_cfo + tv_reg_channel)
+            if is_mtl:
+                # For MTL, regularize all inputs
+                l2_reg = cli_args.regularization * (torch.norm(x_0_rf) + torch.norm(x_0_cfo) + torch.norm(x_0_channel))
+                
+                # Total Variation (TV) regularization on inputs
+                tv_reg_rf = torch.sum(torch.abs(x_0_rf[:, :, :, 1:] - x_0_rf[:, :, :, :-1]))
+                tv_reg_cfo = torch.sum(torch.abs(x_0_cfo[:, :, 1:] - x_0_cfo[:, :, :-1]))
+                tv_reg_channel = torch.sum(torch.abs(x_0_channel[:, :, 1:] - x_0_channel[:, :, :-1]))
+                tv_reg = cli_args.tv_regularization * (tv_reg_rf + tv_reg_cfo + tv_reg_channel)
+            else:
+                # For single-task, only regularize the relevant input
+                task_name = TASKS[0]
+                if task_name == 'rf_fingerprinting':
+                    l2_reg = cli_args.regularization * torch.norm(x_0_rf)
+                    tv_reg = cli_args.tv_regularization * torch.sum(torch.abs(x_0_rf[:, :, :, 1:] - x_0_rf[:, :, :, :-1]))
+                elif task_name == 'cfo_estimation':
+                    l2_reg = cli_args.regularization * torch.norm(x_0_cfo)
+                    tv_reg = cli_args.tv_regularization * torch.sum(torch.abs(x_0_cfo[:, :, 1:] - x_0_cfo[:, :, :-1]))
+                elif task_name == 'channel_estimation':
+                    l2_reg = cli_args.regularization * torch.norm(x_0_channel)
+                    tv_reg = cli_args.tv_regularization * torch.sum(torch.abs(x_0_channel[:, :, 1:] - x_0_channel[:, :, :-1]))
 
             loss = reconstruction_loss + l2_reg + tv_reg
             loss.backward()
@@ -190,11 +229,23 @@ def reconstruct_data(cli_args):
             t_steps.set_postfix(loss=loss.item(), lr=optimizer.param_groups[0]['lr'])
 
         # --- Post-Optimization Analysis ---
-        reconstructed_data = {
-            'rf_fingerprinting': x_0_rf.detach().cpu(),
-            'cfo_estimation': x_0_cfo.detach().cpu(),
-            'channel_estimation': x_0_channel.detach().cpu()
-        }
+        reconstructed_data = {}
+        if is_mtl:
+            # For MTL, we have all reconstructed inputs
+            reconstructed_data = {
+                'rf_fingerprinting': x_0_rf.detach().cpu(),
+                'cfo_estimation': x_0_cfo.detach().cpu(),
+                'channel_estimation': x_0_channel.detach().cpu()
+            }
+        else:
+            # For single-task, only the relevant input was optimized
+            task_name = TASKS[0]
+            if task_name == 'rf_fingerprinting':
+                reconstructed_data['rf_fingerprinting'] = x_0_rf.detach().cpu()
+            elif task_name == 'cfo_estimation':
+                reconstructed_data['cfo_estimation'] = x_0_cfo.detach().cpu()
+            elif task_name == 'channel_estimation':
+                reconstructed_data['channel_estimation'] = x_0_channel.detach().cpu()
 
         print(f"\n--- [Sample {i+1}] Post-Attack Analysis ---")
         for task in TASKS:

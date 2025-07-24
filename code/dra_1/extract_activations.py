@@ -15,53 +15,44 @@ dotenv.load_dotenv()
 # Adjust sys.path to allow imports from the 'rep_lr' directory
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from rep_lr.models import (ComplexSequenceProjector, Encoder, 
-                   RFClassificationHead, ChannelEstimationHead, CFOEstimationHead,
-                   UpsamplingProjector)
 from rep_lr.py_datasets import TrainDataset
 from torch.utils.data import DataLoader
+from dra_1.model_loader import load_model_for_extraction
 
 def extract_activations(cli_args):
     """
     Extracts activations from the shared encoder of a trained model.
     """
-    # Determine model directory from the checkpoint path
+    # Determine experiment directory from the model path
     if os.path.isdir(cli_args.model_path):
-        model_dir = cli_args.model_path
-        # Try to find a .pt file in the directory
-        pt_files = [f for f in os.listdir(model_dir) if f.endswith('_best.pt')]
-        if not pt_files:
-            raise FileNotFoundError(f"No '_best.pt' file found in directory: {model_dir}")
-        if len(pt_files) > 1:
-            print(f"Warning: Multiple '_best.pt' files found. Using the first one: {pt_files[0]}")
-        model_checkpoint_path = os.path.join(model_dir, pt_files[0])
+        experiment_dir = cli_args.model_path
     else:
-        model_checkpoint_path = cli_args.model_path
-        model_dir = os.path.dirname(model_checkpoint_path)
-
-    # Load training arguments from the saved args.json
-    args_path = os.path.join(model_dir, 'args.json')
-    if not os.path.exists(args_path):
-        raise FileNotFoundError(f"args.json not found in {model_dir}. Cannot determine model architecture.")
-    with open(args_path, 'r') as f:
-        train_args = argparse.Namespace(**json.load(f))
-    
-    # Override with CLI args
-    train_args.gpu_id = cli_args.gpu_id
-    train_args.data_fraction = cli_args.data_fraction
+        experiment_dir = os.path.dirname(cli_args.model_path)
 
     # Create output directory
     output_dir = cli_args.output_dir
     if output_dir is None:
-        output_dir = os.path.join(model_dir, 'activations')
+        output_dir = os.path.join(experiment_dir, 'activations')
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     print(f"Saving activations to: {output_dir}")
 
     # Set device
-    device = torch.device(f'cuda:{train_args.gpu_id}' if torch.cuda.is_available() else 'cpu')
+    device = torch.device(f'cuda:{cli_args.gpu_id}' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
+
+    # Load model using the new utility
+    model_data = load_model_for_extraction(experiment_dir, device)
+    model = model_data['model']
+    train_args = model_data['train_args']
+    is_mtl = model_data['is_mtl']
+    
+    # Override with CLI args
+    train_args.gpu_id = cli_args.gpu_id
+    train_args.data_fraction = cli_args.data_fraction
+
+    print(f"Model loaded successfully. MTL: {is_mtl}")
 
     # Load train data
     pkl_file_path_env = os.environ.get('PKL_FILE_PATH')
@@ -98,7 +89,6 @@ def extract_activations(cli_args):
     else:
         print(f"Using all {len(data_list)} samples from train+val+test sets.")
 
-    
     # Create ID class dict
     ID_class_dict = {f'Radio{i}': i for i in range(16)}
     num_classes = len(ID_class_dict)
@@ -106,80 +96,12 @@ def extract_activations(cli_args):
     dataset = TrainDataset(data_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, test_mode=False)
     data_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
 
-    # Re-create model architecture
-    is_mtl = getattr(train_args, 'mtl', False)
-
-    if is_mtl:
-        print("Reconstructing MTL model architecture.")
-        projections = torch.nn.ModuleDict()
-        heads = torch.nn.ModuleDict() # Not used for extraction but needed for loading checkpoint
-        
-        for task in train_args.task:
-            if task == 'rf_fingerprinting':
-                seq_len = train_args.slice_len
-                projections[task] = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
-                heads[task] = RFClassificationHead(input_dim=2*train_args.d2, num_classes=num_classes, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
-            elif task == 'channel_estimation':
-                seq_len = 160
-                projections[task] = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
-                heads[task] = ChannelEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, output_length=52, dropout=train_args.dropout)
-            elif task == 'cfo_estimation':
-                projections[task] = UpsamplingProjector(output_seq_len=train_args.proj_seq_len)
-                heads[task] = CFOEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
-
-        encoder = Encoder(
-            slice_size=train_args.proj_seq_len, 
-            output_dim=train_args.d2, 
-            dropout=train_args.dropout,
-            num_blocks=getattr(train_args, 'encoder_num_blocks', 1)
-        )
-        
-        model_projections = projections
-        model_encoder = encoder
-        model_heads = heads
-        
-    else: # Single-task
-        print("Reconstructing single-task model architecture.")
-        task_name = train_args.task
-        
-        if task_name == 'cfo_estimation':
-            projection = UpsamplingProjector(output_seq_len=train_args.proj_seq_len)
-        else:
-            seq_len = train_args.slice_len if task_name == 'rf_fingerprinting' else 160
-            projection = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
-
-        encoder = Encoder(
-            slice_size=train_args.proj_seq_len, 
-            output_dim=train_args.d2, 
-            dropout=train_args.dropout,
-            num_blocks=getattr(train_args, 'encoder_num_blocks', 1)
-        )
-        # Dummy head
-        task_head = torch.nn.Identity()
-        model = torch.nn.ModuleList([projection, encoder, task_head])
-
-    # Load trained weights
-    print(f"Loading weights from {model_checkpoint_path}")
-    checkpoint = torch.load(model_checkpoint_path, map_location=device)
-    
-    if is_mtl:
-        model_projections.load_state_dict(checkpoint['projections_state_dict'])
-        model_encoder.load_state_dict(checkpoint['encoder_state_dict'])
-        # Heads are not needed for activation extraction, so we don't strictly need to load them
-        model_projections.to(device).eval()
-        model_encoder.to(device).eval()
-    else:
-        model[0].load_state_dict(checkpoint['module_0'])
-        model[1].load_state_dict(checkpoint['module_1'])
-        model.to(device).eval()
-
-    print("Model loaded successfully. Starting activation extraction.")
+    print("Starting activation extraction.")
 
     with torch.no_grad():
         for batch in tqdm(data_loader, desc="Extracting Activations"):
             rf_inputs, rf_labels, cfo_inputs, cfo_labels, channel_inputs, channel_labels, file_paths = batch
-            #print(f"[extract_activations.py] Batch loaded. Shapes: rf_inputs={rf_inputs.shape}, cfo_inputs={cfo_inputs.shape}, channel_inputs={channel_inputs.shape}")
-
+            
             filename = os.path.basename(file_paths[0])
             save_path = os.path.join(output_dir, filename.replace('.mat', '.pth'))
 
@@ -187,9 +109,11 @@ def extract_activations(cli_args):
                 continue
 
             # This tensor will hold the RF data that gets saved.
-            rf_inputs_to_save = None
+            rf_inputs_to_save = rf_inputs.detach().cpu() #Bx2x1024
+            #print(rf_inputs_to_save.shape)
 
             if is_mtl:
+                # MTL model: use projections dict and sum projections
                 projected_tensors = []
                 task_data_map = {
                     'rf_fingerprinting': rf_inputs,
@@ -200,48 +124,41 @@ def extract_activations(cli_args):
                 for task_name in train_args.task:
                     inputs = task_data_map[task_name].to(device).float()
                     if task_name == 'rf_fingerprinting':
+                       # print(f"RF inputs shape: {inputs.shape}")
                         # MTL eval logic for RF averages projections across slices
-                        
-                        proj = model_projections[task_name](inputs)
-                        #print(f"[extract_activations.py] MTL RF projection shape: {proj.shape}")
-                        projected_tensors.append(proj.mean(dim=0, keepdim=True))
-                    else:
-                        proj = model_projections[task_name](inputs)
-                        #print(f"[extract_activations.py] MTL {task_name} projection shape: {proj.shape}")
+                        proj = model['projections'][task_name](inputs)
                         projected_tensors.append(proj)
-                
+                    else:
+                        proj = model['projections'][task_name](inputs)
+                        projected_tensors.append(proj)
+                #import pdb; pdb.set_trace()
                 projected_sum = torch.sum(torch.stack(projected_tensors), dim=0)
-                #print(f"[extract_activations.py] MTL projected_sum shape: {projected_sum.shape}")
-                encoded_activation = model_encoder(projected_sum)
-                #print(f"[extract_activations.py] MTL encoded_activation shape: {encoded_activation.shape}")
-                
-                # In MTL mode, save the original, unmodified rf_inputs.
-                rf_inputs_to_save = rf_inputs.detach().cpu()
+                encoded_activation = model['encoder'](projected_sum)
 
-            else: # Single-task
+            else:
+                # Single-task model: use projection and encoder directly
                 task_name = train_args.task
                 if task_name == 'rf_fingerprinting':
-                    inputs = rf_inputs.squeeze(0).to(device).float() # Process slices
-                    # Use the squeezed tensor for saving.
-                    rf_inputs_to_save = rf_inputs.detach().cpu()
+                    inputs = rf_inputs.to(device).float()  
                 elif task_name == 'cfo_estimation':
                     inputs = cfo_inputs.to(device).float()
-                    # For non-RF tasks, save the original RF inputs as a placeholder.
-                    rf_inputs_to_save = rf_inputs.detach().cpu()
                 elif task_name == 'channel_estimation':
                     inputs = channel_inputs.to(device).float()
-                    # For non-RF tasks, save the original RF inputs as a placeholder.
-                    rf_inputs_to_save = rf_inputs.detach().cpu()
 
-                projection, encoder, _ = model
-                projected = projection(inputs)
-                #print(f"[extract_activations.py] Single-task {task_name} projection shape: {projected.shape}")
-                encoded_activation = encoder(projected)
-                #print(f"[extract_activations.py] Single-task {task_name} encoded_activation before mean: {encoded_activation.shape}")
-                if task_name == 'rf_fingerprinting':
-                    # Average the activations of all slices to get a single vector per file
-                    encoded_activation = encoded_activation.mean(dim=0, keepdim=True)
-                    #print(f"[extract_activations.py] Single-task {task_name} encoded_activation after mean: {encoded_activation.shape}")
+                projected = model['projection'](inputs)
+                
+                # Handle direct CFO case where encoder might be bypassed
+                if task_name == 'cfo_estimation' and getattr(train_args, 'direct_cfo', False):
+                    # For direct CFO, the "encoded" activation is actually just the projection
+                    # But we still want to save something, so let's use a dummy encoder pass
+                    # or just use the projection directly
+                    encoded_activation = projected  # Skip encoder for direct CFO
+                else:
+                    encoded_activation = model['encoder'](projected)
+                
+                # if task_name == 'rf_fingerprinting':
+                #     # Average the activations of all slices to get a single vector per file
+                #     encoded_activation = encoded_activation.mean(dim=0, keepdim=True)
 
             # Save the activation
             data_to_save = {
@@ -254,7 +171,6 @@ def extract_activations(cli_args):
                 'cfo_label': cfo_labels.detach().cpu(),
                 'channel_label': channel_labels.detach().cpu()
             }
-            #print(f"[extract_activations.py] Saving data. Shapes: activation={data_to_save['activation'].shape}, RF_X={data_to_save['RF_X'].shape}, CFO_X={data_to_save['CFO_X'].shape}, Channel_X={data_to_save['Channel_X'].shape}")
             torch.save(data_to_save, save_path, _use_new_zipfile_serialization=False)
 
     print(f"\nExtraction complete. Activations are saved in {output_dir}")
