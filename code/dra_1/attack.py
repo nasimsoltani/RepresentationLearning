@@ -15,7 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from dra_1.models import Decoder
 from dra_1.py_datasets import ActivationDataset
-from dra_1.inject_noise import inject_isotropic_noise
+from dra_1.inject_noise import inject_isotropic_noise, inject_nonisotropic_noise
 
 def visualize_reconstruction(originals, reconstructions, task_names, save_path):
     """
@@ -66,8 +66,47 @@ def train_decoder(cli_args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
+    # Set up paths based on experiment_path
+    activation_dir = os.path.join(cli_args.experiment_path, 'activations')
+    if not os.path.isdir(activation_dir):
+        raise FileNotFoundError(f"'activations' directory not found in {cli_args.experiment_path}. Expected it at: {activation_dir}")
+    print(f"Found activations directory: {activation_dir}")
+
+    # Use PKL_FILE_PATH environment variable for partition file
+    pkl_file_path = os.environ.get('PKL_FILE_PATH')
+    if pkl_file_path is None:
+        raise ValueError("PKL_FILE_PATH environment variable not set. Please set it to the directory containing the partition file.")
+    
+    partition_file = os.path.join(pkl_file_path, 'rf_partition_dict_0.5.pkl')
+    if not os.path.exists(partition_file):
+        raise FileNotFoundError(f"Partition file not found at: {partition_file}")
+    print(f"Using partition file: {partition_file}")
+
+    # Create save directory
+    save_dir = os.path.join(cli_args.experiment_path, 'attack_results', cli_args.noise_type, f"level_{str(cli_args.noise_level).replace('.', '_')}")
+    os.makedirs(save_dir, exist_ok=True)
+    cli_args.save_path = os.path.join(save_dir, 'best_adversary.pt')
+    print(f"Saving results to: {save_dir}")
+
+    # Save attack arguments for reproducibility
+    attack_args = {
+        'experiment_path': cli_args.experiment_path,
+        'noise_type': cli_args.noise_type,
+        'noise_level': cli_args.noise_level,
+        'epochs': cli_args.epochs,
+        'lr': cli_args.lr,
+        'batch_size': cli_args.batch_size,
+        'patience': cli_args.patience,
+        'rf_loss_weight': cli_args.rf_loss_weight,
+        'latent_dim': cli_args.latent_dim,
+        'fim_samples': cli_args.fim_samples if cli_args.noise_type == 'nonisotropic' else None
+    }
+    
+    with open(os.path.join(save_dir, 'attack_args.json'), 'w') as f:
+        json.dump(attack_args, f, indent=4)
+
     # Load the dataset containing activations
-    with open(cli_args.partition_file, 'rb') as f:
+    with open(partition_file, 'rb') as f:
         partitions = pickle.load(f)
     
     train_files = partitions.get('train')
@@ -77,30 +116,35 @@ def train_decoder(cli_args):
     if not train_files or not val_files or not test_files:
         raise ValueError("Could not find 'train', 'val', and 'test' keys in the partition file.")
 
-    train_dataset = ActivationDataset(activation_dir=cli_args.activation_dir, file_list=train_files)
-    val_dataset = ActivationDataset(activation_dir=cli_args.activation_dir, file_list=val_files, test_mode=True)
-    test_dataset = ActivationDataset(activation_dir=cli_args.activation_dir, file_list=test_files, test_mode=True)
+    train_dataset = ActivationDataset(activation_dir=activation_dir, file_list=train_files)
+    val_dataset = ActivationDataset(activation_dir=activation_dir, file_list=val_files, test_mode=True)
+    test_dataset = ActivationDataset(activation_dir=activation_dir, file_list=test_files, test_mode=True)
 
     train_loader = DataLoader(train_dataset, batch_size=cli_args.batch_size, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=cli_args.batch_size, shuffle=False, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=cli_args.batch_size, shuffle=False, num_workers=4)
 
     # Initialize the Decoder model and optimizer
-    latent_dim = 512  # This should match the flattened output of the encoder (e.g., 2 * 256)
-    decoder = Decoder(latent_dim=latent_dim).to(device)
+    decoder = Decoder(latent_dim=cli_args.latent_dim).to(device)
     optimizer = optim.Adam(decoder.parameters(), lr=cli_args.lr)
     criterion = nn.L1Loss()
+
+    # Setup for nonisotropic noise if needed
+    L, V = None, None
+    if cli_args.noise_type == 'nonisotropic':
+        print("\n===== Calculating FIM for Nonisotropic Noise =====")
+        # For nonisotropic noise, we need to compute FIM using training data
+        # This is a simplified version - in practice you'd want to load task heads
+        # and compute FIM properly like in check_utility.py
+        print("Warning: Nonisotropic noise requires FIM calculation with task heads.")
+        print("For now, falling back to isotropic noise. Please implement FIM calculation.")
+        cli_args.noise_type = 'isotropic'
 
     # --- DEBUG: Focus only on RF reconstruction ---
     TASKS = ['rf', 'cfo', 'channel']
 
     best_val_loss = float('inf')
     patience_counter = 0
-
-    # Create save directory if it doesn't exist
-    save_dir = os.path.dirname(cli_args.save_path)
-    if save_dir:
-        os.makedirs(save_dir, exist_ok=True)
 
     print("Starting decoder training...")
     for epoch in range(cli_args.epochs):
@@ -130,7 +174,12 @@ def train_decoder(cli_args):
                 print(f"  Channel Ground Truth-> Mean: {true_channel.mean().item():.3e}, Std: {true_channel.std().item():.3e}, Min: {true_channel.min().item():.3e}, Max: {true_channel.max().item():.3e}")
                 print("--- End data stats ---\n")
 
-            #activation_batch = inject_isotropic_noise(activation_batch, cli_args.noise_level)
+            # Apply noise based on type
+            if cli_args.noise_type == 'isotropic':
+                activation_batch = inject_isotropic_noise(activation_batch, cli_args.noise_level)
+            elif cli_args.noise_type == 'nonisotropic':
+                activation_batch = inject_nonisotropic_noise(activation_batch, cli_args.noise_level, L, V)
+            # For 'none', no noise is applied
             
             true_rf = rf_x.squeeze(1).to(device)
             true_cfo = cfo_x.squeeze(1).to(device)
@@ -175,7 +224,12 @@ def train_decoder(cli_args):
         with torch.no_grad():
             for rf_x, _, cfo_x, _, channel_x, _, activation_batch, _ in tqdm(val_loader, desc=f"Epoch {epoch+1}/{cli_args.epochs} [Val]"):
                 activation_batch = activation_batch.squeeze(1).to(device)
-                activation_batch = inject_isotropic_noise(activation_batch, cli_args.noise_level)
+                
+                # Apply noise based on type
+                if cli_args.noise_type == 'isotropic':
+                    activation_batch = inject_isotropic_noise(activation_batch, cli_args.noise_level)
+                elif cli_args.noise_type == 'nonisotropic':
+                    activation_batch = inject_nonisotropic_noise(activation_batch, cli_args.noise_level, L, V)
                 
                 true_rf = rf_x.squeeze(1).to(device)
                 true_cfo = cfo_x.squeeze(1).to(device)
@@ -226,7 +280,12 @@ def train_decoder(cli_args):
     with torch.no_grad():
         for rf_x, _, cfo_x, _, channel_x, _, activation_batch, _ in tqdm(test_loader, desc="Testing"):
             activation_batch = activation_batch.squeeze(1).to(device)
-            activation_batch = inject_isotropic_noise(activation_batch, cli_args.noise_level)
+            
+            # Apply noise based on type
+            if cli_args.noise_type == 'isotropic':
+                activation_batch = inject_isotropic_noise(activation_batch, cli_args.noise_level)
+            elif cli_args.noise_type == 'nonisotropic':
+                activation_batch = inject_nonisotropic_noise(activation_batch, cli_args.noise_level, L, V)
             
             true_rf = rf_x.squeeze(1).to(device)
             true_cfo = cfo_x.squeeze(1).to(device)
@@ -254,29 +313,30 @@ def train_decoder(cli_args):
         print(f"  {task.upper()} L1 Loss: {avg_test_losses[task]:.3e} (Raw Loss: {avg_test_losses[task]:.6f})")
 
     # Visualize results
-    visualize_reconstruction(original_samples, reconstructed_samples, TASKS, 'reconstruction_results_all_tasks.png')
+    plot_path = os.path.join(save_dir, 'reconstruction_results_all_tasks.png')
+    visualize_reconstruction(original_samples, reconstructed_samples, TASKS, plot_path)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train a Decoder to reconstruct data from latent activations.")
     
     # Required paths
-    parser.add_argument('--activation_dir', type=str, required=True, help="Directory containing pre-computed activation files.")
-    parser.add_argument('--partition_file', type=str, required=True, help="Path to the data partition file.")
+    parser.add_argument('--experiment_path', type=str, required=True, help="Path to the experiment results directory, containing the model checkpoint and an 'activations' subdirectory.")
+    
+    # Noise configuration
+    parser.add_argument('--noise_type', type=str, default='none', choices=['isotropic', 'nonisotropic', 'none'], help="Type of noise to inject during training.")
+    parser.add_argument('--noise_level', type=float, default=0.0, help="Standard deviation of noise to add to activations.")
+    parser.add_argument('--fim_samples', type=int, default=1000, help="Number of samples to use for FIM calculation for nonisotropic noise.")
     
     # Training parameters
-    parser.add_argument('--epochs', type=int, default=5, help="Number of training epochs.")
+    parser.add_argument('--epochs', type=int, default=15, help="Number of training epochs.")
     parser.add_argument('--lr', type=float, default=1e-3, help="Learning rate for the decoder training.")
     parser.add_argument('--batch_size', type=int, default=128, help="Batch size for training.")
     parser.add_argument('--patience', type=int, default=10, help="Patience for early stopping.")
-    parser.add_argument('--noise_level', type=float, default=0.0, help="Standard deviation of isotropic Gaussian noise to add to activations.")
     parser.add_argument('--rf_loss_weight', type=float, default=4, help="Weight to apply to the RF reconstruction loss.")
     
     # Model parameters
     parser.add_argument('--latent_dim', type=int, default=512, help="Dimension of the latent space (after flattening).")
-    
-    # Output options
-    parser.add_argument('--save_path', type=str, default='results_attacks/trained_decoder.pt', help="Path to save the trained decoder model.")
 
     cli_args = parser.parse_args()
     train_decoder(cli_args) 
