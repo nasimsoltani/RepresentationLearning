@@ -20,13 +20,26 @@ fi
 # =================================================================================
 
 # --- Configuration ---
-DATASET_PATH="$PKL_FILE_PATH/rf_partition_dict_0.5.pkl" # <-- IMPORTANT: SET THIS PATH IF DIFFERENT
-GPU_ID=0 # <-- Set the GPU to use
+DATASET_PATH="$PKL_FILE_PATH/rf_partition_dict_0.5.pkl"
+GPU_ID=0
 
-# Generate a timestamped directory for this run
+# --- Create a Unique Directory ---
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-RESULTS_DIR="results_${TIMESTAMP}"
-echo "Results for this run will be saved in: ${RESULTS_DIR}"
+
+# Check if a run ID was passed as the first argument ($1)
+if [ -n "$1" ]; then
+    # If an argument is provided, create a subdirectory for this specific run.
+    RUN_ID=$1
+    RESULTS_DIR="results_${TIMESTAMP}/run_${RUN_ID}"
+    echo "Run ID '$RUN_ID' provided. Results will be saved in: ${RESULTS_DIR}"
+else
+    # If no argument is provided, use the original behavior.
+    RESULTS_DIR="results_${TIMESTAMP}"
+    echo "No Run ID provided. Results will be saved in: ${RESULTS_DIR}"
+fi
+
+# The -p flag is crucial here. It creates parent directories as needed.
+mkdir -p "${RESULTS_DIR}"
 
 # Common model parameters
 PROJ_SEQ_LEN=256
