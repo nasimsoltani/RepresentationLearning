@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH -J rep_lr_batch     # Job name
-#SBATCH -o rep_lr_batch.o%j # Name of stdout output file
+#SBATCH -o rep_lr_batch.o%j # Name of stdout output file for this job script
 #SBATCH -p gh               # Queue (partition) name
 #SBATCH -N 1                # Total # of nodes
 #SBATCH -n 1                # Total # of mpi tasks
 #SBATCH --cpus-per-task=4   # Request 4 CPUs for your 4 parallel runs
-#SBATCH -t 12:00:00         # Run time (hh:mm:ss)
+#SBATCH -t 24:00:00         # Run time (hh:mm:ss)
 #SBATCH -A DBS24008         # Allocation name
 
 # Load modules and activate environment
@@ -14,19 +14,24 @@ module load gcc/13 cuda/12.6 nccl/12.4
 conda init
 conda activate vllm
 
-# 1. Create the output directory
-echo "Creating output directory..."
-mkdir -p result_batch_run
+# Define a directory for this script's logs (stdout/stderr of each run)
+# Using an absolute path with $SLURM_SUBMIT_DIR is the most reliable method.
+LOG_DIR="$SLURM_SUBMIT_DIR/parallel_run_logs"
+mkdir -p "$LOG_DIR"
 
-# 2. Run the same script 4 times in parallel, logging each to a separate file
 echo "Starting 4 parallel runs of experiment.sh..."
-/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/scripts/experiments.sh > results_batch_run/run_1.log 2>&1 &
-/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/scripts/experiments.sh > results_batch_run/run_2.log 2>&1 &
-/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/scripts/experiments.sh > results_batch_run/run_3.log 2>&1 &
-/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/scripts/experiments.sh > results_batch_run/run_4.log 2>&1 &
+echo "Logs for each run will be saved in: $LOG_DIR"
+echo "Experiment results will be created by experiments.sh in timestamped directories."
 
-# 3. Wait for all background jobs to complete
+# --- Launch the parallel runs ---
+# This loop calls your flexible experiments.sh script, passing a unique
+# run ID (1, 2, 3, or 4) to each instance.
+for i in {1..4}; do
+    echo "Launching run with ID: $i"
+    /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/scripts/experiments.sh "$i" > "$LOG_DIR/run_${i}.log" 2>&1 &
+done
+
+# Wait for all background jobs to complete before the job exits
 wait
 
-echo "All 4 runs have completed."
-echo "Check the results_batch_run/ directory for output logs."
+echo "All 4 runs have completed. 🚀"
