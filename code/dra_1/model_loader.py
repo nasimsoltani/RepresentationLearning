@@ -279,7 +279,7 @@ def _load_single_task_model(train_args, checkpoint, device, load_heads):
     # Load weights - handle different checkpoint formats
     if 'model_state_dict' in checkpoint:
         # New format: complete model state dict
-        model.load_state_dict(checkpoint['model_state_dict'])
+        model.load_state_dict(checkpoint['model_state_dict'], strict=False)
     else:
         # Old format: separate module states
         if 'module_0' in checkpoint:
