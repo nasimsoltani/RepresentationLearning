@@ -28,7 +28,7 @@ fi
 
 
 # IMPORTANT: SET THIS PATH to the top-level directory containing all your experiment results.
-RESULTS_DIR="/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807" # <-- CHANGE THIS
+RESULTS_DIR="/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250721_015529" # <-- CHANGE THIS
 
 # IMPORTANT: SET THIS to the path of the .pkl dataset to use for all evaluations.
 EVAL_DATASET_PATH="$PKL_FILE_PATH/rf_partition_dict_0.5.pkl" 
