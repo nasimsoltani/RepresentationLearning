@@ -163,6 +163,188 @@ def plot_distance_vs_accuracy(predictions_path):
     print(f"Distance vs. accuracy plot saved to {plot_path}")
     plt.close()
 
+def plot_distance_vs_cfo_metrics(predictions_path):
+    """
+    Plots distance vs CFO estimation metrics (MSE and R²).
+
+    Args:
+        predictions_path (str): Path to the CFO predictions JSON file.
+    """
+    try:
+        with open(predictions_path, 'r') as f:
+            predictions = json.load(f)
+    except FileNotFoundError:
+        print(f"Error: CFO predictions file not found at {predictions_path}")
+        return
+    except json.JSONDecodeError:
+        print(f"Error: Could not decode JSON from {predictions_path}")
+        return
+
+    # Group predictions by distance
+    distance_data = {}
+    for item in predictions:
+        filename = item['filename']
+        match = re.search(r'_(\d+)ft_', filename)
+        if match:
+            distance = int(match.group(1))
+            if distance not in distance_data:
+                distance_data[distance] = {'y_true': [], 'y_pred': []}
+            
+            distance_data[distance]['y_true'].append(item['y_true_real'])
+            distance_data[distance]['y_pred'].append(item['y_pred_real'])
+
+    if not distance_data:
+        print("No distances found in filenames. Skipping CFO distance vs. metrics plots.")
+        return
+
+    # Calculate metrics for each distance
+    sorted_distances = sorted(distance_data.keys())
+    mse_values = []
+    r2_values = []
+    
+    for distance in sorted_distances:
+        y_true = np.array(distance_data[distance]['y_true'])
+        y_pred = np.array(distance_data[distance]['y_pred'])
+        
+        mse = mean_squared_error(y_true, y_pred)
+        r2 = r2_score(y_true, y_pred)
+        
+        mse_values.append(mse)
+        r2_values.append(r2)
+
+    output_dir = os.path.dirname(predictions_path)
+    
+    # Create MSE vs Distance plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(sorted_distances, mse_values, marker='o', linestyle='-', color='red')
+    plt.title('CFO Estimation: MSE vs. Distance')
+    plt.xlabel('Distance (ft)')
+    plt.ylabel('MSE (Hz²)')
+    plt.grid(True)
+    mse_plot_path = os.path.join(output_dir, 'cfo_distance_vs_mse.png')
+    plt.savefig(mse_plot_path)
+    print(f"CFO distance vs. MSE plot saved to {mse_plot_path}")
+    plt.close()
+    
+    # Create R² vs Distance plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(sorted_distances, r2_values, marker='o', linestyle='-', color='blue')
+    plt.title('CFO Estimation: R² vs. Distance')
+    plt.xlabel('Distance (ft)')
+    plt.ylabel('R² Score')
+    plt.grid(True)
+    r2_plot_path = os.path.join(output_dir, 'cfo_distance_vs_r2.png')
+    plt.savefig(r2_plot_path)
+    print(f"CFO distance vs. R² plot saved to {r2_plot_path}")
+    plt.close()
+
+def plot_distance_vs_channel_metrics(predictions_path):
+    """
+    Plots distance vs channel estimation metrics (NMSE and R²).
+
+    Args:
+        predictions_path (str): Path to the channel predictions JSON file.
+    """
+    try:
+        with open(predictions_path, 'r') as f:
+            predictions = json.load(f)
+    except FileNotFoundError:
+        print(f"Error: Channel predictions file not found at {predictions_path}")
+        return
+    except json.JSONDecodeError:
+        print(f"Error: Could not decode JSON from {predictions_path}")
+        return
+
+    # Group predictions by distance
+    distance_data = {}
+    for item in predictions:
+        filename = item['filename']
+        match = re.search(r'_(\d+)ft_', filename)
+        if match:
+            distance = int(match.group(1))
+            if distance not in distance_data:
+                distance_data[distance] = {'y_true': [], 'y_pred': []}
+            
+            distance_data[distance]['y_true'].append(item['y_true'])
+            distance_data[distance]['y_pred'].append(item['y_pred'])
+
+    if not distance_data:
+        print("No distances found in filenames. Skipping channel distance vs. metrics plots.")
+        return
+
+    # Calculate metrics for each distance
+    sorted_distances = sorted(distance_data.keys())
+    nmse_values = []
+    nmse_db_values = []
+    r2_total_values = []
+    
+    for distance in sorted_distances:
+        y_true = np.array(distance_data[distance]['y_true'])
+        y_pred = np.array(distance_data[distance]['y_pred'])
+        
+        # Separate real and imaginary parts
+        y_true_real = y_true[:, 0, :]
+        y_pred_real = y_pred[:, 0, :]
+        y_true_imag = y_true[:, 1, :]
+        y_pred_imag = y_pred[:, 1, :]
+
+        # Convert to complex numbers for NMSE
+        y_true_complex = y_true_real + 1j * y_true_imag
+        y_pred_complex = y_pred_real + 1j * y_pred_imag
+
+        # Calculate NMSE
+        nmse_num = np.mean(np.abs(y_true_complex - y_pred_complex)**2)
+        nmse_den = np.mean(np.abs(y_true_complex)**2)
+        nmse = nmse_num / nmse_den
+        nmse_db = 10 * np.log10(nmse)
+        
+        # Calculate total R² by flattening both real and imaginary parts together
+        y_true_flat = np.concatenate([y_true_real.flatten(), y_true_imag.flatten()])
+        y_pred_flat = np.concatenate([y_pred_real.flatten(), y_pred_imag.flatten()])
+        r2_total = r2_score(y_true_flat, y_pred_flat)
+        
+        nmse_values.append(nmse)
+        nmse_db_values.append(nmse_db)
+        r2_total_values.append(r2_total)
+
+    output_dir = os.path.dirname(predictions_path)
+    
+    # Create NMSE vs Distance plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(sorted_distances, nmse_values, marker='o', linestyle='-', color='red')
+    plt.title('Channel Estimation: NMSE vs. Distance')
+    plt.xlabel('Distance (ft)')
+    plt.ylabel('NMSE')
+    plt.grid(True)
+    nmse_plot_path = os.path.join(output_dir, 'channel_distance_vs_nmse.png')
+    plt.savefig(nmse_plot_path)
+    print(f"Channel distance vs. NMSE plot saved to {nmse_plot_path}")
+    plt.close()
+    
+    # Create NMSE (dB) vs Distance plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(sorted_distances, nmse_db_values, marker='o', linestyle='-', color='orange')
+    plt.title('Channel Estimation: NMSE (dB) vs. Distance')
+    plt.xlabel('Distance (ft)')
+    plt.ylabel('NMSE (dB)')
+    plt.grid(True)
+    nmse_db_plot_path = os.path.join(output_dir, 'channel_distance_vs_nmse_db.png')
+    plt.savefig(nmse_db_plot_path)
+    print(f"Channel distance vs. NMSE (dB) plot saved to {nmse_db_plot_path}")
+    plt.close()
+    
+    # Create Total R² vs Distance plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(sorted_distances, r2_total_values, marker='o', linestyle='-', color='blue')
+    plt.title('Channel Estimation: Total R² vs. Distance')
+    plt.xlabel('Distance (ft)')
+    plt.ylabel('R² Score')
+    plt.grid(True)
+    r2_plot_path = os.path.join(output_dir, 'channel_distance_vs_r2.png')
+    plt.savefig(r2_plot_path)
+    print(f"Channel distance vs. total R² plot saved to {r2_plot_path}")
+    plt.close()
+
 def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, mean_cfo, std_cfo, args):
     is_mtl = getattr(args, 'mtl', False)
     
@@ -275,6 +457,9 @@ def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, mean_cf
     with open(predictions_path, 'w') as f:
         json.dump(evaluation_results, f, indent=4)
     print(f"Detailed predictions saved to {predictions_path}")
+    
+    # Plot distance vs CFO metrics
+    plot_distance_vs_cfo_metrics(predictions_path)
     
     #TODO: See what is a meaningfull plot
     # Plotting
@@ -409,6 +594,9 @@ def evaluate_channel_estimation(model, test_dl, device, output_dir, args):
     with open(predictions_path, 'w') as f:
         json.dump(evaluation_results, f, indent=4)
     print(f"Detailed predictions saved to {predictions_path}")
+    
+    # Plot distance vs channel metrics
+    plot_distance_vs_channel_metrics(predictions_path)
     
     #TODO: Decide what is a meaningfull plot
     # Save some examples for plotting

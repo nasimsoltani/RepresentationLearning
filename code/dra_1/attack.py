@@ -8,8 +8,12 @@ from torch.utils.data import DataLoader, random_split
 import numpy as np
 import pickle
 from tqdm import tqdm
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import json
+from dotenv import load_dotenv
+load_dotenv()
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -59,7 +63,170 @@ def visualize_reconstruction(originals, reconstructions, task_names, save_path):
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.97])
     plt.savefig(save_path)
+    plt.close()
     print(f"Saved reconstruction visualization to {save_path}")
+
+
+def plot_epoch_samples(decoder, sample_batch, epoch, save_dir, device, task_names=['rf', 'cfo', 'channel']):
+    """
+    Plot sample reconstructions at each epoch to monitor training progress.
+    """
+    decoder.eval()
+    with torch.no_grad():
+        rf_x, rf_y, cfo_x, cfo_y, channel_x, channel_y, activation_batch, filenames = sample_batch
+        
+        # Process data
+        activation_batch = activation_batch[:2].squeeze(1).to(device)  # Use first 2 samples
+        true_rf = rf_x[:2].squeeze(1).to(device)
+        true_cfo = cfo_x[:2].squeeze(1).to(device)
+        true_channel = channel_x[:2].squeeze(1).to(device)
+        
+        # Get reconstructions
+        reconstructed_x = decoder(activation_batch)
+        
+        # DEBUG: Print actual values being plotted
+        print(f"\n  🔍 DEBUG - Epoch {epoch} reconstruction values:")
+        for task in ['rf', 'cfo', 'channel']:
+            pred_data = reconstructed_x[task]
+            print(f"    {task.upper()} pred - Mean: {pred_data.mean().item():.6f}, Std: {pred_data.std().item():.6f}, "
+                  f"Min: {pred_data.min().item():.6f}, Max: {pred_data.max().item():.6f}")
+            print(f"    {task.upper()} pred sample[0] first 5 values: {pred_data[0, 0, :5].cpu().numpy()}")
+        
+        # Create plot
+        fig, axes = plt.subplots(2, 6, figsize=(18, 8))  # 2 samples x 6 plots (3 tasks x 2 components each)
+        fig.suptitle(f'Epoch {epoch} - Sample Reconstructions', fontsize=16)
+        
+        samples_data = [
+            (true_rf, reconstructed_x['rf'], 'RF', 0),
+            (true_cfo, reconstructed_x['cfo'], 'CFO', 2), 
+            (true_channel, reconstructed_x['channel'], 'Channel', 4)
+        ]
+        
+        for sample_idx in range(2):  # First 2 samples
+            for true_data, pred_data, task_name, col_offset in samples_data:
+                true_np = true_data[sample_idx].cpu().numpy()
+                pred_np = pred_data[sample_idx].cpu().numpy()
+                
+                # Real part
+                axes[sample_idx, col_offset].plot(true_np[0][:100], 'b-', label='True', alpha=0.8)
+                axes[sample_idx, col_offset].plot(pred_np[0][:100], 'r--', label='Pred', alpha=0.8)
+                axes[sample_idx, col_offset].set_title(f'{task_name} Real (Sample {sample_idx+1})')
+                axes[sample_idx, col_offset].legend()
+                axes[sample_idx, col_offset].grid(True, alpha=0.3)
+                
+                # Imaginary part
+                axes[sample_idx, col_offset+1].plot(true_np[1][:100], 'b-', label='True', alpha=0.8)
+                axes[sample_idx, col_offset+1].plot(pred_np[1][:100], 'r--', label='Pred', alpha=0.8)
+                axes[sample_idx, col_offset+1].set_title(f'{task_name} Imag (Sample {sample_idx+1})')
+                axes[sample_idx, col_offset+1].legend()
+                axes[sample_idx, col_offset+1].grid(True, alpha=0.3)
+                
+                # Calculate and display correlation
+                corr_real = np.corrcoef(true_np[0], pred_np[0])[0, 1]
+                corr_imag = np.corrcoef(true_np[1], pred_np[1])[0, 1]
+                mse = np.mean((true_np - pred_np)**2)
+                
+                # Add text with metrics
+                metrics_text = f'Corr: {corr_real:.3f}/{corr_imag:.3f}\nMSE: {mse:.3f}'
+                axes[sample_idx, col_offset].text(0.02, 0.98, metrics_text, 
+                                                 transform=axes[sample_idx, col_offset].transAxes,
+                                                 verticalalignment='top', fontsize=8,
+                                                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+        
+        plt.tight_layout()
+        epoch_plot_path = os.path.join(save_dir, f'epoch_{epoch:03d}_samples.png')
+        plt.savefig(epoch_plot_path, dpi=100, bbox_inches='tight')
+        plt.close()
+        
+        # Also save compact stats
+        stats = {}
+        for true_data, pred_data, task_name, _ in samples_data:
+            true_np = true_data.cpu().numpy()
+            pred_np = pred_data.cpu().numpy()
+            
+            # Average correlation across samples and components
+            corrs = []
+            for i in range(min(2, true_np.shape[0])):
+                corr_real = np.corrcoef(true_np[i, 0], pred_np[i, 0])[0, 1]
+                corr_imag = np.corrcoef(true_np[i, 1], pred_np[i, 1])[0, 1]
+                corrs.extend([corr_real, corr_imag])
+            
+            avg_corr = np.mean([c for c in corrs if not np.isnan(c)])
+            mse = np.mean((true_np - pred_np)**2)
+            
+            stats[task_name.lower()] = {
+                'correlation': avg_corr,
+                'mse': mse,
+                'pred_mean': pred_np.mean(),
+                'pred_std': pred_np.std()
+            }
+        
+        print(f"  Epoch {epoch} sample stats:")
+        for task, stat in stats.items():
+            print(f"    {task.upper()}: Corr={stat['correlation']:.4f}, MSE={stat['mse']:.4f}, "
+                  f"Pred(μ={stat['pred_mean']:.3f}, σ={stat['pred_std']:.3f})")
+        
+        return stats
+
+
+def plot_epoch_trends(epoch_stats, save_dir):
+    """
+    Plot trends of reconstruction quality across epochs.
+    """
+    if not epoch_stats:
+        return
+    
+    epochs = list(range(1, len(epoch_stats) + 1))
+    
+    # Extract metrics for each task
+    tasks = ['rf', 'cfo', 'channel']
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    fig.suptitle('Training Progress - Reconstruction Quality Trends', fontsize=16)
+    
+    for task_idx, task in enumerate(tasks):
+        correlations = [stats[task]['correlation'] for stats in epoch_stats]
+        mses = [stats[task]['mse'] for stats in epoch_stats]
+        pred_means = [stats[task]['pred_mean'] for stats in epoch_stats]
+        pred_stds = [stats[task]['pred_std'] for stats in epoch_stats]
+        
+        # Correlation plot
+        axes[0, task_idx].plot(epochs, correlations, 'o-', linewidth=2, markersize=4)
+        axes[0, task_idx].set_title(f'{task.upper()} Correlation')
+        axes[0, task_idx].set_xlabel('Epoch')
+        axes[0, task_idx].set_ylabel('Correlation')
+        axes[0, task_idx].grid(True, alpha=0.3)
+        axes[0, task_idx].axhline(y=0, color='r', linestyle='--', alpha=0.5)
+        
+        # MSE plot
+        axes[1, task_idx].plot(epochs, mses, 'o-', linewidth=2, markersize=4, color='red')
+        axes[1, task_idx].set_title(f'{task.upper()} MSE')
+        axes[1, task_idx].set_xlabel('Epoch')
+        axes[1, task_idx].set_ylabel('MSE')
+        axes[1, task_idx].grid(True, alpha=0.3)
+        axes[1, task_idx].set_yscale('log')
+        
+        # Add final values as text
+        final_corr = correlations[-1] if correlations else 0
+        final_mse = mses[-1] if mses else 0
+        axes[0, task_idx].text(0.05, 0.95, f'Final: {final_corr:.3f}', 
+                              transform=axes[0, task_idx].transAxes, verticalalignment='top',
+                              bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+        axes[1, task_idx].text(0.05, 0.95, f'Final: {final_mse:.3f}', 
+                              transform=axes[1, task_idx].transAxes, verticalalignment='top',
+                              bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+    
+    plt.tight_layout()
+    trend_plot_path = os.path.join(save_dir, 'epoch_trends.png')
+    plt.savefig(trend_plot_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"Saved epoch trends to {trend_plot_path}")
+    
+    # Also save the stats as JSON for further analysis
+    import json
+    stats_path = os.path.join(save_dir, 'epoch_stats.json')
+    with open(stats_path, 'w') as f:
+        json.dump(epoch_stats, f, indent=2)
+    print(f"Saved epoch statistics to {stats_path}")
 
 
 def train_decoder(cli_args):
@@ -145,6 +312,16 @@ def train_decoder(cli_args):
 
     best_val_loss = float('inf')
     patience_counter = 0
+    
+    # Get a fixed sample batch for monitoring across epochs
+    print("Getting sample batch for epoch monitoring...")
+    sample_batch = None
+    for batch in val_loader:
+        sample_batch = batch
+        break
+    
+    # Store epoch statistics for plotting trends
+    epoch_stats = []
 
     print("Starting decoder training...")
     for epoch in range(cli_args.epochs):
@@ -153,7 +330,7 @@ def train_decoder(cli_args):
         train_losses = {task: 0.0 for task in TASKS}
         
         # --- Check weight at start of epoch ---
-        weight_at_epoch_start = decoder.rf_decoder[0].weight.data[0, 0].item()
+        weight_at_epoch_start = decoder.shared_decoder[0].weight.data[0, 0].item()
         
         for i, (rf_x, _, cfo_x, _, channel_x, _, activation_batch, _) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{cli_args.epochs} [Train]")):
             activation_batch = activation_batch.squeeze(1).to(device)
@@ -211,7 +388,7 @@ def train_decoder(cli_args):
         avg_train_losses = {task: loss / len(train_loader) for task, loss in train_losses.items()}
 
         # --- Check weight at end of epoch and report change ---
-        weight_at_epoch_end = decoder.rf_decoder[0].weight.data[0, 0].item()
+        weight_at_epoch_end = decoder.shared_decoder[0].weight.data[0, 0].item()
         print(f"\n--- Epoch {epoch+1} Weight Change Summary ---")
         print(f"  Weight at START of epoch: {weight_at_epoch_start:.6f}")
         print(f"  Weight at END of epoch:   {weight_at_epoch_end:.6f}")
@@ -262,6 +439,11 @@ def train_decoder(cli_args):
             patience_counter += 1
             print(f"  (Raw Val Loss: {avg_val_loss:.6f}) -> No improvement. Patience: {patience_counter}/{cli_args.patience}")
 
+        # --- Plot sample outputs for this epoch ---
+        if sample_batch is not None:
+            epoch_sample_stats = plot_epoch_samples(decoder, sample_batch, epoch + 1, save_dir, device)
+            epoch_stats.append(epoch_sample_stats)
+        
         if patience_counter >= cli_args.patience:
             print("Early stopping triggered.")
             break
@@ -314,7 +496,12 @@ def train_decoder(cli_args):
 
     # Visualize results
     plot_path = os.path.join(save_dir, 'reconstruction_results_all_tasks.png')
+    print(f"Saving reconstruction visualization to {plot_path}")
     visualize_reconstruction(original_samples, reconstructed_samples, TASKS, plot_path)
+    
+    # Plot epoch trends
+    print(f"\nGenerating epoch trend analysis...")
+    plot_epoch_trends(epoch_stats, save_dir)
 
 
 if __name__ == '__main__':
