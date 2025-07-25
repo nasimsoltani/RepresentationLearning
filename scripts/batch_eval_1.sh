@@ -69,7 +69,7 @@ for experiment_dir in "$RESULTS_DIR"/*/; do
             echo "--- Found model. Evaluating: $MODEL_PATH ---"
 
             # Run the evaluation script
-            python code/rep_lr/eval.py \
+            uv run python code/rep_lr/eval.py \
                 --model_path "$MODEL_PATH" \
                 --eval_pkl_dataset_path "$EVAL_DATASET_PATH" \
                 --gpu_id $GPU_ID \
