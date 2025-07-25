@@ -18,21 +18,20 @@ class ActivationDataset(Dataset):
     def __init__(self, activation_dir, file_list, test_mode=False):
         """
         Args:
-            activation_dir (str): Directory containing pre-computed .pth activation files.
-            file_list (list): List of .mat file paths (from a partition dictionary)
-                              that determines which activations to load.
-            test_mode (bool): If False, the file_list is shuffled.
+            activation_dir (string): Directory with all the activation .pt files.
+            file_list (list): List of filenames to include in this dataset slice.
+            test_mode (bool): In test mode, we don't need to load all data, just what's needed for one sample.
         """
         self.activation_dir = activation_dir
-        self.file_list = file_list.copy()  # Make a copy to avoid modifying the original
+        self.file_list = list(file_list)  # Create a mutable copy
         self.test_mode = test_mode
 
         if not os.path.isdir(self.activation_dir):
             raise ValueError(f"Activation directory not found: {self.activation_dir}")
 
-        # Always shuffle to ensure class diversity, regardless of test_mode
-        # This is important because files are often ordered by class/radio ID
-        random.shuffle(self.file_list)
+        # For training mode, shuffle the list of files to ensure random batches
+        if not self.test_mode:
+            random.shuffle(self.file_list)
 
         # Create a set of available activation file basenames for quick lookups
         available_activations = {os.path.basename(f) for f in os.listdir(self.activation_dir) if f.endswith('.pth')}

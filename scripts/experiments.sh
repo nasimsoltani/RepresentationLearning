@@ -63,7 +63,9 @@ HEAD_HIDDEN_DIM=256
 #     --d2 $D2 \
 #     --head_hidden_dim $HEAD_HIDDEN_DIM \
 #     --gpu_id $GPU_ID \
-#     --dropout 0.1
+#     --dropout 0.1 \
+#     --task_adaptive_encoder \
+#     --encoder_num_blocks 2 
 
 # # =================================================================================
 # # 2. Single-Task: CFO Estimation
@@ -87,19 +89,21 @@ HEAD_HIDDEN_DIM=256
 # # =================================================================================
 # # 3. Single-Task: Channel Estimation
 # # =================================================================================
-# echo "--- Starting Single-Task: Channel Estimation ---"
-# python code/rep_lr/main.py \
-#     --task channel_estimation \
-#     --pkl_dataset_path $DATASET_PATH \
-#     --save_path "${RESULTS_DIR}/channel" \
-#     --epochs 300 \
-#     --batch_size 256 \
-#     --lr 1e-3 \
-#     --proj_seq_len $PROJ_SEQ_LEN \
-#     --proj_hidden_dim $PROJ_HIDDEN_DIM \
-#     --d2 $D2 \
-#     --head_hidden_dim $HEAD_HIDDEN_DIM \
-#     --gpu_id $GPU_ID
+echo "--- Starting Single-Task: Channel Estimation ---"
+uv run python code/rep_lr/main.py \
+    --task channel_estimation \
+    --pkl_dataset_path $DATASET_PATH \
+    --save_path "${RESULTS_DIR}/channel" \
+    --epochs 300 \
+    --batch_size 256 \
+    --lr 1e-3 \
+    --proj_seq_len $PROJ_SEQ_LEN \
+    --proj_hidden_dim $PROJ_HIDDEN_DIM \
+    --d2 $D2 \
+    --head_hidden_dim $HEAD_HIDDEN_DIM \
+    --gpu_id $GPU_ID
+    --task_adaptive_encoder \
+    --encoder_num_blocks 2 
 
 # # # =================================================================================
 # # # 4. Multi-Task (MTL): RF + CFO
@@ -142,7 +146,9 @@ HEAD_HIDDEN_DIM=256
 #     --proj_hidden_dim $PROJ_HIDDEN_DIM \
 #     --d2 $D2 \
 #     --head_hidden_dim $HEAD_HIDDEN_DIM \
-#     --gpu_id $GPU_ID
+#     --gpu_id $GPU_ID \
+#     --task_adaptive_encoder \
+#     --encoder_num_blocks 2
 
 # # =================================================================================
 # # 6. Multi-Task (MTL): CFO + Channel
@@ -171,24 +177,24 @@ HEAD_HIDDEN_DIM=256
 # # =================================================================================
 # # 7. Multi-Task (MTL): RF + CFO + Channel
 # # =================================================================================
-echo "--- Starting MTL: RF Fingerprinting + CFO Estimation + Channel Estimation ---"
-uv run python code/rep_lr/main.py \
-    --mtl \
-    --task rf_fingerprinting cfo_estimation channel_estimation \
-    --pkl_dataset_path $DATASET_PATH \
-    --save_path "${RESULTS_DIR}/rf_cfo_channel" \
-    --epochs 300 \
-    --batch_size 256 \
-    --lr 1e-4 \
-    --w_rf 1.0 \
-    --w_cfo 1.0 \
-    --w_channel 1.0 \
-    --proj_seq_len $PROJ_SEQ_LEN \
-    --proj_hidden_dim $PROJ_HIDDEN_DIM \
-    --d2 $D2 \
-    --head_hidden_dim $HEAD_HIDDEN_DIM \
-    --gpu_id $GPU_ID
-    --task_adaptive_encoder \
-    --encoder_num_blocks 2
+# echo "--- Starting MTL: RF Fingerprinting + CFO Estimation + Channel Estimation ---"
+# uv run python code/rep_lr/main.py \
+#     --mtl \
+#     --task rf_fingerprinting cfo_estimation channel_estimation \
+#     --pkl_dataset_path $DATASET_PATH \
+#     --save_path "${RESULTS_DIR}/rf_cfo_channel" \
+#     --epochs 300 \
+#     --batch_size 256 \
+#     --lr 1e-4 \
+#     --w_rf 1.0 \
+#     --w_cfo 1.0 \
+#     --w_channel 1.0 \
+#     --proj_seq_len $PROJ_SEQ_LEN \
+#     --proj_hidden_dim $PROJ_HIDDEN_DIM \
+#     --d2 $D2 \
+#     --head_hidden_dim $HEAD_HIDDEN_DIM \
+#     --gpu_id $GPU_ID
+#     --task_adaptive_encoder \
+#     --encoder_num_blocks 2
 
 echo "--- All experiments finished ---" 
