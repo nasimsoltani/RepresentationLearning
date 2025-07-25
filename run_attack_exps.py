@@ -2,6 +2,9 @@ import os
 import ray
 import subprocess
 import time
+import dotenv
+
+dotenv.load_dotenv()
 
 # --- Ray Worker Function ---
 # This is the ONLY part you need to change.
@@ -26,12 +29,12 @@ def run_command(command: str, task_type: str):
 remote_activation = False
 
 
-results_path = "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
-activations_base = "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
-extract_activation_script = "/home/hofmann/Documents/projects/RepresentationLearning/code/dra_1/extract_activations.py"
-attack_script = "/home/hofmann/Documents/projects/RepresentationLearning/code/dra_1/robust_attack.py"
-is_uv=True
-ray_tmp_dir = "/home/hofmann/Documents/ray_temp"
+results_path =  "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
+activations_base =  os.getenv("ACTIVATIONS_BASE")# "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
+extract_activation_script = os.getenv("EXTRACT_ACTIVATION_SCRIPT")# "/home/hofmann/Documents/projects/RepresentationLearning/code/dra_1/extract_activations.py"
+attack_script = os.getenv("ATTACK_SCRIPT")# "/home/hofmann/Documents/projects/RepresentationLearning/code/dra_1/robust_attack.py"
+is_uv=os.getenv("IS_UV")
+ray_tmp_dir = os.getenv("RAY_TMP_DIR")# "/home/hofmann/Documents/ray_temp"
 
 if not os.path.exists(ray_tmp_dir):
     os.makedirs(ray_tmp_dir)
