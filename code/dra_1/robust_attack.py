@@ -392,7 +392,7 @@ if __name__ == '__main__':
     parser.add_argument('--leaked_fraction', type=float, default=1.0, help="Fraction of the training dataset that is considered 'leaked' and used for the attack.")
 
     # Training parameters
-    parser.add_argument('--epochs', type=int, default=30, help="Max number of training epochs.")
+    parser.add_argument('--epochs', type=int, default=70, help="Max number of training epochs.")
     parser.add_argument('--lr', type=float, default=1e-4, help="Learning rate for the decoder.")
     parser.add_argument('--batch_size', type=int, default=64, help="Batch size.")
     parser.add_argument('--patience', type=int, default=5, help="Patience for early stopping.")
