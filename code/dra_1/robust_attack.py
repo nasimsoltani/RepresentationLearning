@@ -82,25 +82,6 @@ def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # --- Wandb Setup ---
-    # Base config from current run's arguments
-    config = vars(args).copy()
-
-    # Load encoder (original model) training args and add to config
-    encoder_args_path = os.path.join(args.experiment_path, 'args.json')
-    if os.path.exists(encoder_args_path):
-        print(f"Loading encoder training args from {encoder_args_path}")
-        with open(encoder_args_path, 'r') as f:
-            encoder_train_args = json.load(f)
-        
-        # Add to config with a prefix
-        for key, value in encoder_train_args.items():
-            config[f'encoder_train_{key}'] = value
-    else:
-        print(f"Warning: Encoder training args file not found at {encoder_args_path}. Skipping.")
-
-
-   
     # --- Paths and Directories ---
     # Determine the output directory
     if args.output_dir:
@@ -125,12 +106,12 @@ def main(args):
     # Initialize wandb
     wandb.init(
         project="data-reconstruction-attack",
-        config=config,
+        config=args,
         name=f"attack_{args.task}_noise_{args.noise_type}_level_{args.noise_level}",
         dir=save_dir # Save wandb logs in the same directory
     )
 
-    # --- Paths and Directories ---
+    # Determine activation directory
     if hasattr(args, 'activations_path') and args.activations_path:
         activation_dir = args.activations_path
     else:
