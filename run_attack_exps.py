@@ -14,7 +14,7 @@ safe_env_vars = {k: v for k, v in env_vars_from_dotenv.items() if v is not None}
 
 # --- Ray Worker Function ---
 # This is the ONLY part you need to change.
-@ray.remote(num_gpus=0.1) # <-- CRITICAL CHANGE HERE
+@ray.remote(num_gpus=1) # <-- CRITICAL CHANGE HERE
 def run_command(command: str, task_type: str):
     """
     This worker function now only 'reserves' 0.1 of a GPU's compute.
@@ -32,10 +32,11 @@ def run_command(command: str, task_type: str):
         
     return result.returncode
 
-remote_activation = True
+remote_activation = False #STrue
 
 
-results_path =  "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250723_164619"
+#results_path =  "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250723_164619"
+results_path =  "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
 activations_base =  os.getenv("ACTIVATIONS_BASE")# "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
 extract_activation_script = os.getenv("EXTRACT_ACTIVATION_SCRIPT")# "/home/hofmann/Documents/projects/RepresentationLearning/code/dra_1/extract_activations.py"
 attack_script = os.getenv("ATTACK_SCRIPT")# "/home/hofmann/Documents/projects/RepresentationLearning/code/dra_1/robust_attack.py"
@@ -74,7 +75,7 @@ tasks = os.listdir(results_path)
 def generate_attack_command(experiment_path, activations_path, task, noise_type="none",
                              noise_level=0.0, fim_samples=1000, leaked_fraction=1.0, epochs=30,
                                lr=1e-4, batch_size=64, patience=5, latent_dim=512):
-    cmd= f"python {attack_script} --experiment_path {experiment_path} --activations_path {activations_path} --task {task} --noise_type {noise_type} --noise_level {noise_level} --fim_samples {fim_samples} --leaked_fraction {leaked_fraction} --epochs {epochs} --lr {lr} --batch_size {batch_size} --patience {patience} --latent_dim {latent_dim}"
+    cmd= f"uv run python {attack_script} --experiment_path {experiment_path} --activations_path {activations_path} --task {task} --noise_type {noise_type} --noise_level {noise_level} --fim_samples {fim_samples} --leaked_fraction {leaked_fraction} --epochs {epochs} --lr {lr} --batch_size {batch_size} --patience {patience} --latent_dim {latent_dim}"
 
     # if is_uv:
     #     cmd = "uv run " + cmd
@@ -82,7 +83,7 @@ def generate_attack_command(experiment_path, activations_path, task, noise_type=
 
 
 def generate_activation_command(model_path, output_dir, gpu_id=0, data_fraction=1.0, overwrite=False):
-    cmd = f"python {extract_activation_script} --model_path {model_path} --output_dir {output_dir} --gpu_id {gpu_id} --data_fraction {data_fraction}"
+    cmd = f"uv run python {extract_activation_script} --model_path {model_path} --output_dir {output_dir} --gpu_id {gpu_id} --data_fraction {data_fraction}"
 
     # if is_uv:
     #     cmd = "uv run " + cmd
@@ -165,7 +166,18 @@ def main():
                                                                 noise_type=noise_type,
                                                                 noise_level=noise_level,
                                                                 leaked_fraction=leaked_fraction)
-                        attack_command = attack_command + f" > {log_dir}/{t}_{noise_type}_{noise_level}_{leaked_fraction}.log 2>&1"
+                        
+                        # Construct the results directory path
+                        frac_str = str(leaked_fraction).replace('.', '_')
+                        level_str = str(float(noise_level)).replace('.', '_')
+                        results_dir = os.path.join(full_task_base_path, 'attack_results_robust', t, noise_type, f'frac_{frac_str}', f'level_{level_str}')
+                        
+                        # Ensure the directory exists
+                        os.makedirs(results_dir, exist_ok=True)
+                        
+                        # Define the log file path and redirect output
+                        log_file_path = os.path.join(results_dir, 'attack.log')
+                        attack_command = attack_command + f" > {log_file_path} 2>&1"
                         attack_commands.append(attack_command)
 
 
@@ -178,7 +190,8 @@ def main():
     ray.init(
         _temp_dir=ray_tmp_dir,
         runtime_env={
-            "conda": "vllm",
+            # "conda": "vllm",
+            "py_executable": "/home/hofmann/Documents/projects/RepresentationLearning/.venv/bin/python3",
             "env_vars": safe_env_vars,
         }
     )
