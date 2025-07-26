@@ -6,9 +6,15 @@ import dotenv
 
 dotenv.load_dotenv()
 
+# Explicitly capture environment variables from .env to pass to Ray workers
+env_vars_from_dotenv = dotenv.dotenv_values()
+# Ray's runtime_env expects string values, so filter out any Nones
+safe_env_vars = {k: v for k, v in env_vars_from_dotenv.items() if v is not None}
+
+
 # --- Ray Worker Function ---
 # This is the ONLY part you need to change.
-@ray.remote(num_gpus=1) # <-- CRITICAL CHANGE HERE
+@ray.remote(num_gpus=0.1) # <-- CRITICAL CHANGE HERE
 def run_command(command: str, task_type: str):
     """
     This worker function now only 'reserves' 0.1 of a GPU's compute.
@@ -26,10 +32,10 @@ def run_command(command: str, task_type: str):
         
     return result.returncode
 
-remote_activation = False
+remote_activation = True
 
 
-results_path =  "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
+results_path =  "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250723_164619"
 activations_base =  os.getenv("ACTIVATIONS_BASE")# "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
 extract_activation_script = os.getenv("EXTRACT_ACTIVATION_SCRIPT")# "/home/hofmann/Documents/projects/RepresentationLearning/code/dra_1/extract_activations.py"
 attack_script = os.getenv("ATTACK_SCRIPT")# "/home/hofmann/Documents/projects/RepresentationLearning/code/dra_1/robust_attack.py"
@@ -70,101 +76,112 @@ def generate_attack_command(experiment_path, activations_path, task, noise_type=
                                lr=1e-4, batch_size=64, patience=5, latent_dim=512):
     cmd= f"python {attack_script} --experiment_path {experiment_path} --activations_path {activations_path} --task {task} --noise_type {noise_type} --noise_level {noise_level} --fim_samples {fim_samples} --leaked_fraction {leaked_fraction} --epochs {epochs} --lr {lr} --batch_size {batch_size} --patience {patience} --latent_dim {latent_dim}"
 
-    if is_uv:
-        cmd = "uv run " + cmd
+    # if is_uv:
+    #     cmd = "uv run " + cmd
     return cmd
 
 
 def generate_activation_command(model_path, output_dir, gpu_id=0, data_fraction=1.0, overwrite=False):
-    return f"python {extract_activation_script} --model_path {model_path} --output_dir {output_dir} --gpu_id {gpu_id} --data_fraction {data_fraction} --overwrite {overwrite}"
+    cmd = f"python {extract_activation_script} --model_path {model_path} --output_dir {output_dir} --gpu_id {gpu_id} --data_fraction {data_fraction}"
 
-    if is_uv:
-        cmd = "uv run " + cmd
+    # if is_uv:
+    #     cmd = "uv run " + cmd
     return cmd
 
-activation_commands = [] 
-attack_commands = []
-experiment_tasks = []
+def main():
+    activation_commands = [] 
+    attack_commands = []
+    experiment_tasks = []
 
-for task in tasks:
-    possible_tasks = ["rf", "cfo", "channel"]
-    maybe_tasks = task.split("_")
+    for task in tasks:
+        possible_tasks = ["rf", "cfo", "channel"]
+        maybe_tasks = task.split("_")
 
-    if maybe_tasks[0] in possible_tasks:
-        experiment_tasks.append(maybe_tasks)
+        if maybe_tasks[0] in possible_tasks:
+            experiment_tasks.append(maybe_tasks)
 
 
 
-for task in experiment_tasks:
+    for task in experiment_tasks:
 
-    activations_path = os.path.join(activations_base, )
-    task_path = os.path.join(results_path, "_".join(task))
-    task_base_path = os.listdir(task_path)[0]
-    
-    full_task_base_path = os.path.join(task_path, task_base_path)
-
-    if remote_activation:
-        activations_path = os.path.join(activations_base, "_".join(task))
-    else:
-        activations_path = os.path.join(full_task_base_path, "activations")
-
-    log_dir = os.path.join(full_task_base_path, "attack_logs")
-
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-
-    if not os.path.exists(activations_path):
-        print(f"Activations path {activations_path} does not exist")
-        os.makedirs(activations_path)
-
-    
-    
-
-    #see if activation path is empty
-    if not os.listdir(activations_path):
-        print(f"Activations path {activations_path} is empty")
+        activations_path = os.path.join(activations_base, )
+        task_path = os.path.join(results_path, "_".join(task))
+        task_base_path = os.listdir(task_path)[0]
         
+        full_task_base_path = os.path.join(task_path, task_base_path)
 
-        act_command = generate_activation_command(full_task_base_path, activations_path)
-        #add log file to act_command
-        act_command = act_command + f" > {log_dir}/activations.log 2>&1"
-        activation_commands.append(act_command)
-
-        
-        #have thing to run command here
-
-    #task-> [t1, t2, t3]
-    noise_types = ["isotropic", "nonisotropic",'none']
-    
-    leaked_fractions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-
-    for noise_type in noise_types:
-        if noise_type == "none":
-            noise_levels = [0]
+        if remote_activation:
+            results_name = results_path.split("/")[-1]
+            activations_path = os.path.join(os.path.join(activations_base, results_name),"_".join(task))
         else:
-            noise_levels = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+            activations_path = os.path.join(full_task_base_path, "activations")
+
+        log_dir = os.path.join(full_task_base_path, "attack_logs")
+
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+
+        if not os.path.exists(activations_path):
+            print(f"Activations path {activations_path} does not exist")
+            os.makedirs(activations_path)
+
+        else:
+            print(f"Activations path {activations_path} exists")
+
         
-        for noise_level in noise_levels:
-            for leaked_fraction in leaked_fractions:
-                for t in task:
-                    attack_command = generate_attack_command(experiment_path=full_task_base_path,
-                                                            activations_path=activations_path,
-                                                            task=t,
-                                                            noise_type=noise_type,
-                                                            noise_level=noise_level,
-                                                            leaked_fraction=leaked_fraction)
-                    attack_command = attack_command + f" > {log_dir}/{t}_{noise_type}_{noise_level}_{leaked_fraction}.log 2>&1"
-                    attack_commands.append(attack_command)
+        
+
+        #see if activation path is empty
+        if not os.listdir(activations_path):
+            print(f"Activations path {activations_path} is empty")
+            
+
+            act_command = generate_activation_command(full_task_base_path, activations_path)
+            #add log file to act_command
+            act_command = act_command + f" > {log_dir}/activations.log 2>&1"
+            activation_commands.append(act_command)
+
+            
+            #have thing to run command here
+
+        print(f"Generating attack commands for {task}")
+        #task-> [t1, t2, t3]
+        noise_types = ["isotropic", "nonisotropic",'none']
+        
+        leaked_fractions = [0.1, 0.4, 0.6, 0.8, 1.0]
+
+        for noise_type in noise_types:
+            if noise_type == "none":
+                noise_levels = [0]
+            else:
+                noise_levels = [1,4,6,8,10]
+            
+            for noise_level in noise_levels:
+                for leaked_fraction in leaked_fractions:
+                    for t in task:
+                        attack_command = generate_attack_command(experiment_path=full_task_base_path,
+                                                                activations_path=activations_path,
+                                                                task=t,
+                                                                noise_type=noise_type,
+                                                                noise_level=noise_level,
+                                                                leaked_fraction=leaked_fraction)
+                        attack_command = attack_command + f" > {log_dir}/{t}_{noise_type}_{noise_level}_{leaked_fraction}.log 2>&1"
+                        attack_commands.append(attack_command)
 
 
-print(f"Generated {len(activation_commands)} activation commands and {len(attack_commands)} attack commands")
+    print(f"Generated {len(activation_commands)} activation commands and {len(attack_commands)} attack commands")
 
-    
+        
 
 
-# --- Main Execution Logic (No changes needed here) ---
-if __name__ == "__main__":
-    ray.init(_temp_dir=ray_tmp_dir)
+
+    ray.init(
+        _temp_dir=ray_tmp_dir,
+        runtime_env={
+            "conda": "vllm",
+            "env_vars": safe_env_vars,
+        }
+    )
     print(f"Ray cluster started. Available resources: {ray.available_resources()}")
 
     # --- PHASE 1: Run Activations ---
@@ -185,6 +202,9 @@ if __name__ == "__main__":
         ray.get(attack_futures)
         print("\n🎉 All experiments are complete!")
 
+
+if __name__ == "__main__":
+    main()
     
 
         
