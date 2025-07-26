@@ -146,7 +146,7 @@ def main():
 
         print(f"Generating attack commands for {task}")
         #task-> [t1, t2, t3]
-        noise_types = ["isotropic", "nonisotropic",'none']
+        noise_types = ['none',"isotropic", "nonisotropic"]
         
         leaked_fractions = [0.1, 0.4, 0.6, 0.8, 1.0]
 
