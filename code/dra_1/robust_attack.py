@@ -82,11 +82,12 @@ def main(args):
     print(f"Using device: {device}")
 
     # --- Paths and Directories ---
-    # Determine the output directory
+    # Determine the save directory. Prioritize the new --output_dir argument.
     if args.output_dir:
         save_dir = args.output_dir
     else:
-        # Fallback for standalone runs: create a directory based on parameters
+        # Fallback to the old method if --output_dir is not provided
+        print("Warning: --output_dir not specified. Constructing save path based on attack parameters. This may overwrite previous results.")
         save_dir = os.path.join(
             args.experiment_path, 
             'attack_results_robust', 
@@ -98,7 +99,7 @@ def main(args):
     os.makedirs(save_dir, exist_ok=True)
     print(f"Results will be saved in: {save_dir}")
 
-    # Save args for reproducibility inside the final output directory
+    # Save args for reproducibility right after determining the save directory
     with open(os.path.join(save_dir, 'attack_args.json'), 'w') as f:
         json.dump(vars(args), f, indent=4)
 
@@ -106,11 +107,10 @@ def main(args):
     wandb.init(
         project="data-reconstruction-attack",
         config=args,
-        name=f"attack_{args.task}_noise_{args.noise_type}_level_{args.noise_level}",
-        dir=save_dir # Save wandb logs in the same directory
+        name=f"attack_{args.task}_noise_{args.noise_type}_level_{args.noise_level}"
     )
 
-    # --- Paths and Directories ---
+    # Determine activation directory
     if hasattr(args, 'activations_path') and args.activations_path:
         activation_dir = args.activations_path
     else:
@@ -119,6 +119,9 @@ def main(args):
     if not os.path.isdir(activation_dir):
         raise FileNotFoundError(f"Activations directory not found at {activation_dir}")
 
+    # The save_dir is now determined above, so we don't need this block.
+    # os.makedirs(save_dir, exist_ok=True)
+    # print(f"Results will be saved in: {save_dir}")
 
     # --- Load Data ---
     pkl_file_path = os.environ.get('PKL_FILE_PATH')
@@ -395,7 +398,7 @@ if __name__ == '__main__':
     # Paths and identifiers
     parser.add_argument('--experiment_path', type=str, required=True, help="Path to the experiment directory.")
     parser.add_argument('--activations_path', type=str, default=None, help="Path to activations directory. If not provided, will use <experiment_path>/activations.")
-    parser.add_argument('--output_dir', type=str, default=None, help="Path to the output directory for results. If not provided, a path will be constructed based on experiment parameters.")
+    parser.add_argument('--output_dir', type=str, default=None, help="Directory to save all outputs. If specified, this will be used as the primary save location, preventing overwrites.")
     
     # Task and Noise
     parser.add_argument('--task', type=str, required=True, choices=['rf', 'cfo', 'channel'], help="Task to attack.")
@@ -415,4 +418,7 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     
+    # The responsibility of saving arguments is now moved inside the main() function
+    # to ensure it happens after the final save_dir is determined.
+        
     main(args) 

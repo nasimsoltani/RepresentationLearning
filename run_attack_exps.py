@@ -72,13 +72,17 @@ tasks = os.listdir(results_path)
     
 
 
-def generate_attack_command(experiment_path, activations_path, task, noise_type="none",
+def generate_attack_command(experiment_path, activations_path, task, output_dir, noise_type="none",
                              noise_level=0.0, fim_samples=1000, leaked_fraction=1.0, epochs=70,
-                               lr=1e-4, batch_size=64, patience=10, latent_dim=512, output_dir=None):
-    cmd= f"python {attack_script} --experiment_path {experiment_path} --activations_path {activations_path} --task {task} --noise_type {noise_type} --noise_level {noise_level} --fim_samples {fim_samples} --leaked_fraction {leaked_fraction} --epochs {epochs} --lr {lr} --batch_size {batch_size} --patience {patience} --latent_dim {latent_dim}"
+                               lr=1e-4, batch_size=64, patience=10, latent_dim=512):
+    cmd= (f"python {attack_script} --experiment_path {experiment_path} "
+          f"--activations_path {activations_path} --task {task} "
+          f"--output_dir {output_dir} "
+          f"--noise_type {noise_type} --noise_level {noise_level} "
+          f"--fim_samples {fim_samples} --leaked_fraction {leaked_fraction} "
+          f"--epochs {epochs} --lr {lr} --batch_size {batch_size} "
+          f"--patience {patience} --latent_dim {latent_dim}")
 
-    if output_dir:
-        cmd += f" --output_dir {output_dir}"
     # if is_uv:
     #     cmd = "uv run " + cmd
     return cmd
@@ -92,6 +96,7 @@ def generate_activation_command(model_path, output_dir, gpu_id=0, data_fraction=
     return cmd
 
 def main():
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
     activation_commands = [] 
     attack_commands = []
     experiment_tasks = []
@@ -166,30 +171,30 @@ def main():
             for noise_level in noise_levels:
                 for leaked_fraction in leaked_fractions:
                     for t in task:
-                        # Define the base directory for this specific attack configuration
+                        
+                        # Construct the results directory path
                         frac_str = str(leaked_fraction).replace('.', '_')
                         level_str = str(float(noise_level)).replace('.', '_')
-                        base_results_dir = os.path.join(
-                            full_task_base_path, 'attack_results_robust', t, noise_type,
-                            f'leaked_frac_{frac_str}', f'noise_level_{level_str}'
-                        )
 
-                        # Create a unique, timestamped directory for this run
-                        run_timestamp = time.strftime("%Y%m%d_%H%M%S")
-                        output_dir = os.path.join(base_results_dir, f"attack_{run_timestamp}")
-                        os.makedirs(output_dir, exist_ok=True)
+                        # Create a timestamped base directory for this run's attack results
+                        base_attack_dir = os.path.join(full_task_base_path, 'attack_results_robust', f'attack_{timestamp}')
 
-
+                        # Define the final results directory for this specific configuration
+                        results_dir = os.path.join(base_attack_dir, t, noise_type, f'leaked_frac_{frac_str}', f'noise_level_{level_str}')
+                        
                         attack_command = generate_attack_command(experiment_path=full_task_base_path,
                                                                 activations_path=activations_path,
                                                                 task=t,
+                                                                output_dir=results_dir,
                                                                 noise_type=noise_type,
                                                                 noise_level=noise_level,
-                                                                leaked_fraction=leaked_fraction,
-                                                                output_dir=output_dir)
+                                                                leaked_fraction=leaked_fraction)
+                        
+                        # Ensure the directory exists
+                        os.makedirs(results_dir, exist_ok=True)
                         
                         # Define the log file path and redirect output
-                        log_file_path = os.path.join(output_dir, 'attack.log')
+                        log_file_path = os.path.join(results_dir, 'attack.log')
                         print(f"Log file path: {log_file_path}")
                         attack_command = attack_command + f" > {log_file_path} 2>&1"
                         attack_commands.append(attack_command)
