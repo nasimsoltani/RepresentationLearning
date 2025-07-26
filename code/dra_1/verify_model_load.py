@@ -167,8 +167,11 @@ def main(args):
             encoder_state = OrderedDict((k.replace('encoder.', ''), v) for k, v in ckpt_state_dict.items() if k.startswith('encoder.'))
             verify_load(encoder, encoder_state, "Encoder")
 
-            head_state = OrderedDict((k.replace('head.', ''), v) for k, v in ckpt_state_dict.items() if k.startswith('head.'))
-            verify_load(head, head_state, "Head")
+            # Filter state dict for the head and verify it within a temporary ModuleDict
+            # to match the saved key structure (e.g., 'head.real_head.weight').
+            head_state = OrderedDict((k, v) for k, v in ckpt_state_dict.items() if k.startswith('head.'))
+            temp_head_model = torch.nn.ModuleDict({'head': head})
+            verify_load(temp_head_model, head_state, "Head")
 
 
     except (FileNotFoundError, KeyError, ValueError) as e:

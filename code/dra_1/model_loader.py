@@ -270,40 +270,37 @@ def _load_single_task_model(train_args, checkpoint, device, load_heads):
     projection = create_projection_layer(task, train_args)
     encoder = create_encoder(train_args)
     
-    # Create model dict
+    # Create model dict and add components
     model = torch.nn.ModuleDict({
         'projection': projection,
         'encoder': encoder
     })
     
+    # Add head if requested, so the model structure matches the checkpoint
+    if load_heads:
+        head = create_task_head(task, train_args)
+        model['head'] = head
+    
     # Load weights - handle different checkpoint formats
     if 'model_state_dict' in checkpoint:
-        # New format: complete model state dict
-        model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        # New format: complete model state dict.
+        # If we aren't loading the head, load non-strictly to ignore head keys.
+        model.load_state_dict(checkpoint['model_state_dict'], strict=load_heads)
     else:
         # Old format: separate module states
         if 'module_0' in checkpoint:
             model['projection'].load_state_dict(checkpoint['module_0'])
+        if 'module_1' in checkpoint:
             model['encoder'].load_state_dict(checkpoint['module_1'])
         else:
-            raise KeyError("Could not find model weights in checkpoint")
-    
-    # Load head if requested
-    if load_heads:
-        head = create_task_head(task, train_args)
+            raise KeyError("Could not find model weights in a recognized legacy format in the checkpoint.")
         
-        if 'model_state_dict' in checkpoint:
-            # Extract head weights from full model state dict
-            head_state_dict = {k.replace('head.', ''): v for k, v in checkpoint['model_state_dict'].items() if k.startswith('head.')}
-            head.load_state_dict(head_state_dict)
-        elif 'module_2' in checkpoint:
-            # Old format: head as third module
-            head.load_state_dict(checkpoint['module_2'])
-        else:
-            print("Warning: Could not find head weights in checkpoint")
-        
-        model['head'] = head
-    
+        if load_heads:
+            if 'module_2' in checkpoint:
+                model['head'].load_state_dict(checkpoint['module_2'])
+            else:
+                print("Warning: Could not find head weights in legacy checkpoint.")
+
     model.to(device).eval()
     
     return {

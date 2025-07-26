@@ -72,21 +72,21 @@ ENCODER_NUM_BLOCKS=2
 # # =================================================================================
 # # 2. Single-Task: CFO Estimation
 # # =================================================================================
-echo "--- Starting Single-Task: CFO Estimation ---"
-python code/rep_lr/main.py \
-    --task cfo_estimation \
-    --pkl_dataset_path $DATASET_PATH \
-    --save_path "${RESULTS_DIR}/cfo" \
-    --epochs 300 \
-    --batch_size $BATCH_SIZE \
-    --lr 1e-3 \
-    --proj_seq_len $PROJ_SEQ_LEN \
-    --proj_hidden_dim $PROJ_HIDDEN_DIM \
-    --d2 $D2 \
-    --head_hidden_dim $HEAD_HIDDEN_DIM \
-    --gpu_id $GPU_ID \
-    --task_adaptive_encoder \
-    --encoder_num_blocks $ENCODER_NUM_BLOCKS
+# echo "--- Starting Single-Task: CFO Estimation ---"
+# python code/rep_lr/main.py \
+#     --task cfo_estimation \
+#     --pkl_dataset_path $DATASET_PATH \
+#     --save_path "${RESULTS_DIR}/cfo" \
+#     --epochs 300 \
+#     --batch_size $BATCH_SIZE \
+#     --lr 1e-3 \
+#     --proj_seq_len $PROJ_SEQ_LEN \
+#     --proj_hidden_dim $PROJ_HIDDEN_DIM \
+#     --d2 $D2 \
+#     --head_hidden_dim $HEAD_HIDDEN_DIM \
+#     --gpu_id $GPU_ID \
+#     --task_adaptive_encoder \
+#     --encoder_num_blocks $ENCODER_NUM_BLOCKS
 
 # # =================================================================================
 # # 3. Single-Task: Channel Estimation
@@ -110,24 +110,24 @@ uv run python code/rep_lr/main.py \
 # # # =================================================================================
 # # # 4. Multi-Task (MTL): RF + CFO
 # # # =================================================================================
-echo "--- Starting MTL: RF Fingerprinting + CFO Estimation ---"
-python code/rep_lr/main.py \
-    --mtl \
-    --task rf_fingerprinting cfo_estimation \
-    --pkl_dataset_path $DATASET_PATH \
-    --save_path "${RESULTS_DIR}/rf_cfo" \
-    --epochs 300 \
-    --batch_size $BATCH_SIZE \
-    --lr 1e-4 \
-    --w_rf 1.0 \
-    --w_cfo 1.5 \
-    --proj_seq_len $PROJ_SEQ_LEN \
-    --proj_hidden_dim $PROJ_HIDDEN_DIM \
-    --d2 $D2 \
-    --head_hidden_dim $HEAD_HIDDEN_DIM \
-    --gpu_id $GPU_ID \
-    --task_adaptive_encoder \
-    --encoder_num_blocks $ENCODER_NUM_BLOCKS
+# echo "--- Starting MTL: RF Fingerprinting + CFO Estimation ---"
+# python code/rep_lr/main.py \
+#     --mtl \
+#     --task rf_fingerprinting cfo_estimation \
+#     --pkl_dataset_path $DATASET_PATH \
+#     --save_path "${RESULTS_DIR}/rf_cfo" \
+#     --epochs 300 \
+#     --batch_size $BATCH_SIZE \
+#     --lr 1e-4 \
+#     --w_rf 1.0 \
+#     --w_cfo 1.5 \
+#     --proj_seq_len $PROJ_SEQ_LEN \
+#     --proj_hidden_dim $PROJ_HIDDEN_DIM \
+#     --d2 $D2 \
+#     --head_hidden_dim $HEAD_HIDDEN_DIM \
+#     --gpu_id $GPU_ID \
+#     --task_adaptive_encoder \
+#     --encoder_num_blocks $ENCODER_NUM_BLOCKS
 
 
 # # # =================================================================================
