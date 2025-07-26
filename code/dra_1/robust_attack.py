@@ -81,11 +81,33 @@ def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
+    # --- Paths and Directories ---
+    # Determine the output directory
+    if args.output_dir:
+        save_dir = args.output_dir
+    else:
+        # Fallback for standalone runs: create a directory based on parameters
+        save_dir = os.path.join(
+            args.experiment_path, 
+            'attack_results_robust', 
+            args.task, 
+            args.noise_type, 
+            f"leaked_frac_{str(args.leaked_fraction).replace('.', '_')}",
+            f"noise_level_{str(args.noise_level).replace('.', '_')}"
+        )
+    os.makedirs(save_dir, exist_ok=True)
+    print(f"Results will be saved in: {save_dir}")
+
+    # Save args for reproducibility inside the final output directory
+    with open(os.path.join(save_dir, 'attack_args.json'), 'w') as f:
+        json.dump(vars(args), f, indent=4)
+
     # Initialize wandb
     wandb.init(
         project="data-reconstruction-attack",
         config=args,
-        name=f"attack_{args.task}_noise_{args.noise_type}_level_{args.noise_level}"
+        name=f"attack_{args.task}_noise_{args.noise_type}_level_{args.noise_level}",
+        dir=save_dir # Save wandb logs in the same directory
     )
 
     # --- Paths and Directories ---
@@ -97,16 +119,6 @@ def main(args):
     if not os.path.isdir(activation_dir):
         raise FileNotFoundError(f"Activations directory not found at {activation_dir}")
 
-    save_dir = os.path.join(
-        args.experiment_path, 
-        'attack_results_robust', 
-        args.task, 
-        args.noise_type, 
-        f"leaked_frac_{str(args.leaked_fraction).replace('.', '_')}",
-        f"noise_level_{str(args.noise_level).replace('.', '_')}"
-    )
-    os.makedirs(save_dir, exist_ok=True)
-    print(f"Results will be saved in: {save_dir}")
 
     # --- Load Data ---
     pkl_file_path = os.environ.get('PKL_FILE_PATH')
@@ -383,6 +395,7 @@ if __name__ == '__main__':
     # Paths and identifiers
     parser.add_argument('--experiment_path', type=str, required=True, help="Path to the experiment directory.")
     parser.add_argument('--activations_path', type=str, default=None, help="Path to activations directory. If not provided, will use <experiment_path>/activations.")
+    parser.add_argument('--output_dir', type=str, default=None, help="Path to the output directory for results. If not provided, a path will be constructed based on experiment parameters.")
     
     # Task and Noise
     parser.add_argument('--task', type=str, required=True, choices=['rf', 'cfo', 'channel'], help="Task to attack.")
@@ -402,17 +415,4 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     
-    # Save args for reproducibility
-    save_dir_pre = os.path.join(
-        args.experiment_path, 
-        'attack_results_robust', 
-        args.task, 
-        args.noise_type, 
-        f"leaked_frac_{str(args.leaked_fraction).replace('.', '_')}",
-        f"noise_level_{str(args.noise_level).replace('.', '_')}"
-    )
-    os.makedirs(save_dir_pre, exist_ok=True)
-    with open(os.path.join(save_dir_pre, 'attack_args.json'), 'w') as f:
-        json.dump(vars(args), f, indent=4)
-        
     main(args) 
