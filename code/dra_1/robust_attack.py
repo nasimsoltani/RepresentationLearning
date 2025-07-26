@@ -103,10 +103,28 @@ def main(args):
     with open(os.path.join(save_dir, 'attack_args.json'), 'w') as f:
         json.dump(vars(args), f, indent=4)
 
+    # Load encoder training arguments from the experiment path
+    try:
+        encoder_train_args = load_training_args(args.experiment_path)
+        print(f"Loaded encoder training arguments from {args.experiment_path}/args.json")
+    except FileNotFoundError as e:
+        print(f"Warning: Could not load encoder training arguments: {e}")
+        encoder_train_args = None
+
+    # Prepare wandb config - combine attack args with encoder training args
+    wandb_config = vars(args).copy()
+    
+    # Add encoder training arguments with prefix
+    if encoder_train_args is not None:
+        encoder_args_dict = vars(encoder_train_args)
+        for key, value in encoder_args_dict.items():
+            prefixed_key = f"encoder_train_{key}"
+            wandb_config[prefixed_key] = value
+
     # Initialize wandb
     wandb.init(
         project="data-reconstruction-attack",
-        config=args,
+        config=wandb_config,
         name=f"attack_{args.task}_noise_{args.noise_type}_level_{args.noise_level}"
     )
 
