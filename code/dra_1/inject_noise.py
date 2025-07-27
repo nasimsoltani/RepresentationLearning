@@ -57,7 +57,11 @@ def inject_nonisotropic_noise(z, noise_level, L, V):
         #do noise varianche 1/lambda_i^alpha
         # alpha = 2
         # L = L**alpha
+        # trace_L = torch.sum(L)
+        # L = L / (trace_L + 1e-12)
+        # noise_level = noise_level * trace_L
         inv_L = 1.0 / (L + 1e-7)  # Add small epsilon for stability
+
         c = noise_level / torch.sum(inv_L)
         aniso_variances = c * inv_L
 
