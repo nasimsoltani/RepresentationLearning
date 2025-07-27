@@ -341,7 +341,7 @@ def main():
     parser = argparse.ArgumentParser(description='Evaluate utility of task heads on latent representations.')
     parser.add_argument('--experiment_path', type=str, required=True, help='Path to the experiment results directory, containing the model checkpoint and an "activations" subdirectory.')
     # parser.add_argument('--model_path', type=str, required=True, help='Path to the trained model checkpoint (.pt file).')
-    # parser.add_argument('--activation_dir', type=str, required=True, help="Directory containing pre-computed activation files.")
+    parser.add_argument('--activation_dir', type=str, required=True, help="Directory containing pre-computed activation files.")
     # parser.add_argument('--partition_file', type=str, required=True, help="Path to the data partition file.")
     parser.add_argument('--output_dir', type=str, default=None, help="Optional: Base directory for evaluation results. Defaults to [experiment_path]/utility_exps.")
     parser.add_argument('--noise_type', type=str, default='isotropic', choices=['isotropic', 'nonisotropic', 'none'], help="Type of noise to inject.")
@@ -379,7 +379,11 @@ def main():
     print(f"Model loaded successfully. MTL: {is_mtl}")
 
     # Set activation directory
-    activation_dir = os.path.join(experiment_path, 'activations')
+    if cli_args.activation_dir is None:
+        activation_dir = os.path.join(experiment_path, 'activations')
+    else:
+        activation_dir = cli_args.activation_dir
+
     if not os.path.isdir(activation_dir):
         raise FileNotFoundError(f"'activations' directory not found in {experiment_path}. Expected it at: {activation_dir}")
     print(f"Found activations directory: {activation_dir}")

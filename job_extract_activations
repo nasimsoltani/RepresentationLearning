@@ -1,0 +1,22 @@
+#!/bin/bash
+#SBATCH -J rep_lr           # Job name
+#SBATCH -o rep_lr.o%j       # Name of stdout output file
+#SBATCH -p gh          # Queue (partition) name
+#SBATCH -N 1               # Total # of nodes
+#SBATCH -n 1               # Total # of mpi tasks
+#SBATCH -t 24:00:00        # Run time (hh:mm:ss)
+#SBATCH -A DBS24008       # Allocation name (req'd if you have more than 1)
+
+# Other commands must follow all #SBATCH directives...
+
+source $HOME/.bashrc
+
+module load gcc/13 cuda/12.6 nccl/12.4 #nvidia_math/12.6
+
+conda init
+
+conda activate vllm
+
+
+python /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/code/dra_1/extract_activations.py \
+ --model_path /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250727_012000/rf/rf_fingerprinting_20250727_012011

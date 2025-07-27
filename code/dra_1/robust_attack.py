@@ -448,8 +448,8 @@ if __name__ == '__main__':
     # Training parameters
     parser.add_argument('--epochs', type=int, default=70, help="Max number of training epochs.")
     parser.add_argument('--lr', type=float, default=1e-4, help="Learning rate for the decoder.")
-    parser.add_argument('--batch_size', type=int, default=64, help="Batch size.")
-    parser.add_argument('--patience', type=int, default=5, help="Patience for early stopping.")
+    parser.add_argument('--batch_size', type=int, default=256, help="Batch size.")
+    parser.add_argument('--patience', type=int, default=30, help="Patience for early stopping.")
     parser.add_argument('--use_lr_scheduler', action='store_true', help="Enable learning rate scheduler (ReduceLROnPlateau).")
 
     # Model parameters

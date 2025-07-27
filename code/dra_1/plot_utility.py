@@ -77,7 +77,7 @@ def get_empirical_fim(head, data_loader, device, latent_dim):
             else:
                 continue
 
-        y_hat = head(activations)
+        y_hat = head(activations.view(activations.size(0), 2, -1))
         if y_hat.dim() > 1 and y_target.dim() == 1 and not is_classification:
              y_hat = y_hat.squeeze(-1)
 
@@ -273,6 +273,11 @@ def evaluate_utility_across_noise(heads, test_dl, device, noise_levels, train_fi
                 L_e, V = torch.linalg.eigh(fim)
                 L = torch.relu(L_e)
                 task_fim_data = (L, V)
+                
+                # --- Plot Eigenvalues (for debugging) ---
+                if task_name == 'cfo_estimation':
+                    plot_fim_eigenvalues(L, task_name, cli_args.output_dir)
+                    
                 print(f"  FIM calculation for {task_name} complete.")
         
         # --- Utility Evaluation ---
@@ -290,6 +295,33 @@ def evaluate_utility_across_noise(heads, test_dl, device, noise_levels, train_fi
                 results[task_name]['nonisotropic'].append(None)
     
     return results
+
+
+def plot_fim_eigenvalues(eigenvalues, task_name, output_dir):
+    """Plots and saves the sorted eigenvalues of the FIM."""
+    plt.style.use('seaborn-v0_8')
+    
+    # Move eigenvalues to CPU and convert to numpy
+    eigenvalues_np = eigenvalues.cpu().numpy()
+    
+    # Sort eigenvalues in descending order
+    sorted_eigenvalues = np.sort(eigenvalues_np)[::-1]
+    
+    plt.figure(figsize=(10, 6))
+    plt.plot(sorted_eigenvalues, 'o-', markersize=4, linewidth=1.5, color='#2E86AB')
+    
+    plt.yscale('log')
+    plt.title(f'Sorted FIM Eigenvalues - {task_name.replace("_", " ").title()}', fontsize=14, fontweight='bold')
+    plt.xlabel('Eigenvalue Index (Sorted)', fontsize=12, fontweight='bold')
+    plt.ylabel('Eigenvalue (log scale)', fontsize=12, fontweight='bold')
+    plt.grid(True, which="both", ls="--", alpha=0.5)
+    
+    plot_filename = f'fim_eigenvalues_{task_name}.png'
+    plot_path = os.path.join(output_dir, plot_filename)
+    plt.tight_layout()
+    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    print(f"Saved FIM eigenvalues plot: {plot_path}")
+    plt.close()
 
 
 def plot_fim_heatmaps(individual_fims, total_fim, output_dir):
@@ -488,6 +520,8 @@ def main():
     parser = argparse.ArgumentParser(description='Plot utility vs noise level for different tasks and noise types.')
     parser.add_argument('--experiment_path', type=str, required=True, 
                        help='Path to the experiment results directory.')
+    parser.add_argument('--activation_dir', type=str, default=None, 
+                       help='Directory containing pre-computed activation files.')
     parser.add_argument('--output_dir', type=str, default=None, 
                        help='Directory to save plots. Defaults to [experiment_path]/utility_plots.')
     parser.add_argument('--noise_min', type=float, default=0.0, 
@@ -538,7 +572,11 @@ def main():
     print(f"Tasks to evaluate: {list(heads.keys())}")
     
     # Setup data
-    activation_dir = os.path.join(cli_args.experiment_path, 'activations')
+    if cli_args.activation_dir is None:
+        activation_dir = os.path.join(cli_args.experiment_path, 'activations')
+    else:
+        activation_dir = cli_args.activation_dir
+
     if not os.path.isdir(activation_dir):
         raise FileNotFoundError(f"'activations' directory not found at: {activation_dir}")
     
