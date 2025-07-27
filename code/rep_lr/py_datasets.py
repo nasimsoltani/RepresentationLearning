@@ -174,6 +174,7 @@ class TrainDatasetRFixed(Dataset):
 		self.mean_cfo = mean_cfo
 		self.std_cfo = std_cfo
 		self.test_mode = test_mode
+		self.rf_begin_idx = rf_begin_idx
 		
 		# shuffle the file list
 		if not self.test_mode:
