@@ -35,7 +35,6 @@ from dra_1.model_loader import load_model_for_utility_check
 def get_empirical_fim(head, data_loader, device, latent_dim):
     """Calculates the empirical Fisher Information Matrix for a given task head."""
     fim = torch.zeros((latent_dim, latent_dim), device=device)
-    criterion = nn.MSELoss()
     num_samples = 0
     head.to(device).eval()
 
@@ -45,15 +44,23 @@ def get_empirical_fim(head, data_loader, device, latent_dim):
     if is_classification:
         criterion = nn.CrossEntropyLoss()
     else:
-        criterion = nn.MSELoss()
+        # Use the same complex MSE loss as in training for consistency
+        mse_loss = nn.MSELoss()
+        def complex_mse_loss(pred, target):
+            pred_flat = pred.view(pred.size(0), -1)
+            target_flat = target.view(target.size(0), -1)
+            return mse_loss(pred_flat, target_flat)
+        criterion = complex_mse_loss
 
     for batch in tqdm(data_loader, desc="Calculating FIM", leave=False):
         # Unpack based on what ActivationDataset yields in train mode
         _, rf_labels, _, cfo_labels, _, ch_labels, activations, _ = batch
         
-        activations = activations.squeeze(1).to(device)
-        activations = activations.view(activations.size(0), -1)
-        activations.requires_grad = True
+        activations_squeezed = activations.squeeze(1).to(device)
+        original_shape = activations_squeezed.shape
+        
+        activations_flat = activations_squeezed.view(activations_squeezed.size(0), -1)
+        activations_flat.requires_grad = True
 
         head.zero_grad()
         
@@ -77,17 +84,19 @@ def get_empirical_fim(head, data_loader, device, latent_dim):
             else:
                 continue
 
-        y_hat = head(activations)
+        # Reshape activations to match what the head expects
+        activations_for_head = activations_flat.view(original_shape)
+        y_hat = head(activations_for_head)
         if y_hat.dim() > 1 and y_target.dim() == 1 and not is_classification:
              y_hat = y_hat.squeeze(-1)
 
         loss = criterion(y_hat, y_target)
         loss.backward()
         
-        if activations.grad is not None:
-            J = activations.grad
+        if activations_flat.grad is not None:
+            J = activations_flat.grad
             fim += J.T @ J
-            num_samples += activations.size(0)
+            num_samples += activations_flat.size(0)
 
     if num_samples == 0:
         return fim
@@ -127,11 +136,11 @@ def evaluate_rf_utility_metric(head, test_dl, device, noise_level, L=None, V=Non
 
     # Calculate accuracy
     accuracy = np.mean(np.array(y_true) == np.array(y_pred))
-    return accuracy
+    return {'accuracy': accuracy}
 
 
 def evaluate_cfo_utility_metric(head, test_dl, device, noise_level, L=None, V=None, noise_type='isotropic'):
-    """Evaluate CFO estimation utility and return R2 score metric."""
+    """Evaluate CFO estimation utility and return both MSE and R2 score metrics."""
     head.to(device).eval()
     y_true, y_pred = [], []
     
@@ -157,20 +166,39 @@ def evaluate_cfo_utility_metric(head, test_dl, device, noise_level, L=None, V=No
             y_true.extend(labels.cpu().numpy())
             y_pred.extend(outputs.cpu().numpy())
 
-    # Calculate R2 score (higher is better, like accuracy)
-    r2 = r2_score(y_true, y_pred)
-    return r2
+    # Calculate both MSE and R2 score
+    y_true_array = np.array(y_true)
+    y_pred_array = np.array(y_pred)
+    
+    mse = mean_squared_error(y_true_array, y_pred_array)
+    r2 = r2_score(y_true_array, y_pred_array)
+    
+    return {'mse': mse, 'r2': r2}
 
 
 def evaluate_channel_utility_metric(head, test_dl, device, noise_level, L=None, V=None, noise_type='isotropic'):
-    """Evaluate channel estimation utility and return R² score."""
+    """Evaluate channel estimation utility and return both MSE and R² score."""
     head.to(device).eval()
     all_y_true, all_y_pred = [], []
+    
+    # Define the same complex MSE loss as used in training
+    mse_loss = nn.MSELoss()
+    def complex_mse_loss(pred, target):
+        pred_flat = pred.view(pred.size(0), -1)
+        target_flat = target.view(target.size(0), -1)
+        return mse_loss(pred_flat, target_flat)
+    
+    total_training_loss = 0.0
+    num_samples = 0
 
     with torch.no_grad():
         for _, _, _, _, _, labels, activations, _ in test_dl:
             activations = activations.squeeze(1).to(device)
             labels = labels.to(device)
+            
+            # Fix: Squeeze the labels to match the shape used in FIM calculation
+            if labels.dim() == 4 and labels.size(1) == 1:
+                labels = labels.squeeze(1)
             
             # Flatten for noise injection (same as working check_utility.py)
             activations = activations.view(activations.size(0), -1)
@@ -184,9 +212,16 @@ def evaluate_channel_utility_metric(head, test_dl, device, noise_level, L=None, 
                 noisy_activations = activations
             
             # Reshape back to (batch, 2, dim) for the head
-            noisy_activations = noisy_activations.view(noisy_activations.size(0), 2, -1)
+            # noisy_activations = noisy_activations.view(noisy_activations.size(0), 2, -1)
+            # The above line is incorrect for the channel estimation head, which expects a flat input.
+            # The RF and CFO heads do their own reshaping internally if needed.
 
             outputs = head(noisy_activations)
+            
+            # Compute training loss for this batch
+            batch_loss = complex_mse_loss(outputs, labels)
+            total_training_loss += batch_loss.item() * labels.size(0)
+            num_samples += labels.size(0)
             
             # Store results exactly like working check_utility.py
             for i in range(labels.size(0)):
@@ -216,10 +251,15 @@ def evaluate_channel_utility_metric(head, test_dl, device, noise_level, L=None, 
     r2_real = r2_score(y_true_real, y_pred_real)
     r2_imag = r2_score(y_true_imag, y_pred_imag)
     
-    # Return average R² score like working check_utility.py
-    r2_avg = (r2_real + r2_imag) / 2.0
+    # Calculate MSE for real and imaginary parts
+    mse_real = mean_squared_error(y_true_real, y_pred_real)
+    mse_imag = mean_squared_error(y_true_imag, y_pred_imag)
     
-    return r2_avg
+    # Return average scores
+    r2_avg = (r2_real + r2_imag) / 2.0
+    mse_avg = (mse_real + mse_imag) / 2.0
+    
+    return {'mse': mse_avg, 'r2': r2_avg}
 
 
 def evaluate_utility_for_task(task_name, head, test_dl, device, noise_level, L=None, V=None, noise_type='isotropic'):
@@ -241,16 +281,24 @@ def evaluate_utility_across_noise(heads, test_dl, device, noise_levels, train_fi
     Returns:
         results (dict): Dictionary with task names as keys, each containing
                        'isotropic' and 'nonisotropic' arrays of utility values
+                       For CFO and channel tasks, each entry contains 'mse' and 'r2' metrics
     """
     results = {}
     
     for task_name, head in heads.items():
         print(f"\nEvaluating {task_name} across noise levels...")
         
-        results[task_name] = {
-            'isotropic': [],
-            'nonisotropic': []
-        }
+        # Initialize results structure based on task type
+        if task_name in ['cfo_estimation', 'channel_estimation']:
+            results[task_name] = {
+                'isotropic': {'mse': [], 'r2': []},
+                'nonisotropic': {'mse': [], 'r2': []}
+            }
+        else:  # rf_fingerprinting
+            results[task_name] = {
+                'isotropic': [],
+                'nonisotropic': []
+            }
         
         # --- FIM Calculation (Task-Specific) ---
         task_fim_data = None
@@ -269,6 +317,14 @@ def evaluate_utility_across_noise(heads, test_dl, device, noise_levels, train_fi
                 latent_dim = head.input_dim
                 fim = get_empirical_fim(head, fim_dl, device, latent_dim)
                 
+                # Normalize the FIM to prevent issues with very small eigenvalues
+                trace_fim = torch.trace(fim)
+                if trace_fim > 1e-10:
+                    fim = fim / trace_fim
+                    print(f"  FIM for {task_name} normalized by its trace: {trace_fim:.3e}")
+                else:
+                    print(f"  Warning: FIM for {task_name} has a zero or near-zero trace. Skipping normalization.")
+
                 # Perform eigendecomposition for this specific task's FIM
                 L_e, V = torch.linalg.eigh(fim)
                 L = torch.relu(L_e)
@@ -278,16 +334,30 @@ def evaluate_utility_across_noise(heads, test_dl, device, noise_levels, train_fi
         # --- Utility Evaluation ---
         for noise_level in tqdm(noise_levels, desc=f"{task_name} evaluation"):
             # Evaluate with isotropic noise
-            iso_utility = evaluate_utility_for_task(task_name, head, test_dl, device, noise_level, noise_type='isotropic')
-            results[task_name]['isotropic'].append(iso_utility)
+            iso_result = evaluate_utility_for_task(task_name, head, test_dl, device, noise_level, noise_type='isotropic')
+            
+            if task_name in ['cfo_estimation', 'channel_estimation']:
+                results[task_name]['isotropic']['mse'].append(iso_result['mse'])
+                results[task_name]['isotropic']['r2'].append(iso_result['r2'])
+            else:
+                results[task_name]['isotropic'].append(iso_result['accuracy'])
             
             # Evaluate with non-isotropic noise using the task-specific FIM
             if task_fim_data is not None:
                 L, V = task_fim_data
-                noniso_utility = evaluate_utility_for_task(task_name, head, test_dl, device, noise_level, L, V, 'nonisotropic')
-                results[task_name]['nonisotropic'].append(noniso_utility)
+                noniso_result = evaluate_utility_for_task(task_name, head, test_dl, device, noise_level, L, V, 'nonisotropic')
+                
+                if task_name in ['cfo_estimation', 'channel_estimation']:
+                    results[task_name]['nonisotropic']['mse'].append(noniso_result['mse'])
+                    results[task_name]['nonisotropic']['r2'].append(noniso_result['r2'])
+                else:
+                    results[task_name]['nonisotropic'].append(noniso_result['accuracy'])
             else:
-                results[task_name]['nonisotropic'].append(None)
+                if task_name in ['cfo_estimation', 'channel_estimation']:
+                    results[task_name]['nonisotropic']['mse'].append(None)
+                    results[task_name]['nonisotropic']['r2'].append(None)
+                else:
+                    results[task_name]['nonisotropic'].append(None)
     
     return results
 
@@ -391,91 +461,164 @@ def plot_fim_heatmaps(individual_fims, total_fim, output_dir):
 def plot_utility_results(results, noise_levels, output_dir):
     """Create and save utility vs noise level plots for each task."""
     
-    # Define metric names and labels for each task
-    task_info = {
-        'rf_fingerprinting': {
-            'metric_name': 'Accuracy',
-            'title': 'RF Fingerprinting Utility vs Noise Level'
-        },
-        'cfo_estimation': {
-            'metric_name': 'R² Score', 
-            'title': 'CFO Estimation Utility vs Noise Level'
-        },
-        'channel_estimation': {
-            'metric_name': 'R² Score',
-            'title': 'Channel Estimation Utility vs Noise Level'
-        }
-    }
-    
     # Set style
     plt.style.use('seaborn-v0_8')
     colors = ['#2E86AB', '#A23B72']  # Blue for isotropic, Pink for non-isotropic
     
     for task_name, task_results in results.items():
-        if task_name not in task_info:
-            continue
+        if task_name == 'rf_fingerprinting':
+            # Plot RF fingerprinting (accuracy only)
+            plt.figure(figsize=(10, 6))
             
-        plt.figure(figsize=(10, 6))
-        
-        # Plot isotropic results
-        isotropic_values = task_results['isotropic']
-        plt.plot(noise_levels, isotropic_values, 'o-', color=colors[0], 
-                linewidth=2, markersize=6, label='Isotropic Noise', alpha=0.8)
-        
-        # Plot non-isotropic results if available
-        nonisotropic_values = task_results['nonisotropic']
-        if nonisotropic_values and all(v is not None for v in nonisotropic_values):
-            plt.plot(noise_levels, nonisotropic_values, 's--', color=colors[1], 
-                    linewidth=2, markersize=6, label='Non-isotropic Noise', alpha=0.8)
-        
-        # Formatting
-        plt.xlabel('Noise Level', fontsize=12, fontweight='bold')
-        plt.ylabel(f'{task_info[task_name]["metric_name"]}', fontsize=12, fontweight='bold')
-        plt.title(task_info[task_name]["title"], fontsize=14, fontweight='bold')
-        plt.grid(True, alpha=0.3)
-        plt.legend(fontsize=11)
-        
-        # Add some padding to y-axis
-        y_min, y_max = plt.ylim()
-        y_range = y_max - y_min
-        plt.ylim(y_min - 0.05 * y_range, y_max + 0.05 * y_range)
-        
-        # Save plot
-        plot_filename = f'{task_name}_utility_vs_noise.png'
-        plot_path = os.path.join(output_dir, plot_filename)
-        plt.tight_layout()
-        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-        print(f"Saved plot: {plot_path}")
-        plt.close()
+            # Plot isotropic results
+            isotropic_values = task_results['isotropic']
+            plt.plot(noise_levels, isotropic_values, 'o-', color=colors[0], 
+                    linewidth=2, markersize=6, label='Isotropic Noise', alpha=0.8)
+            
+            # Plot non-isotropic results if available
+            nonisotropic_values = task_results['nonisotropic']
+            if nonisotropic_values and all(v is not None for v in nonisotropic_values):
+                plt.plot(noise_levels, nonisotropic_values, 's--', color=colors[1], 
+                        linewidth=2, markersize=6, label='Non-isotropic Noise', alpha=0.8)
+            
+            # Formatting
+            plt.xlabel('Noise Level', fontsize=12, fontweight='bold')
+            plt.ylabel('Accuracy', fontsize=12, fontweight='bold')
+            plt.title('RF Fingerprinting Utility vs Noise Level', fontsize=14, fontweight='bold')
+            plt.grid(True, alpha=0.3)
+            plt.legend(fontsize=11)
+            
+            # Add some padding to y-axis
+            y_min, y_max = plt.ylim()
+            y_range = y_max - y_min
+            plt.ylim(y_min - 0.05 * y_range, y_max + 0.05 * y_range)
+            
+            # Save plot
+            plot_filename = f'{task_name}_utility_vs_noise.png'
+            plot_path = os.path.join(output_dir, plot_filename)
+            plt.tight_layout()
+            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+            print(f"Saved plot: {plot_path}")
+            plt.close()
+            
+        elif task_name in ['cfo_estimation', 'channel_estimation']:
+            # Plot both MSE and R² for CFO and channel tasks
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+            
+            # Plot MSE
+            isotropic_mse = task_results['isotropic']['mse']
+            ax1.plot(noise_levels, isotropic_mse, 'o-', color=colors[0], 
+                    linewidth=2, markersize=6, label='Isotropic Noise', alpha=0.8)
+            
+            nonisotropic_mse = task_results['nonisotropic']['mse']
+            if nonisotropic_mse and all(v is not None for v in nonisotropic_mse):
+                ax1.plot(noise_levels, nonisotropic_mse, 's--', color=colors[1], 
+                        linewidth=2, markersize=6, label='Non-isotropic Noise', alpha=0.8)
+            
+            ax1.set_xlabel('Noise Level', fontsize=12, fontweight='bold')
+            ax1.set_ylabel('MSE', fontsize=12, fontweight='bold')
+            ax1.set_title(f'{task_name.replace("_", " ").title()} - MSE vs Noise Level', fontsize=14, fontweight='bold')
+            ax1.grid(True, alpha=0.3)
+            ax1.legend(fontsize=11)
+            
+            # Plot R²
+            isotropic_r2 = task_results['isotropic']['r2']
+            ax2.plot(noise_levels, isotropic_r2, 'o-', color=colors[0], 
+                    linewidth=2, markersize=6, label='Isotropic Noise', alpha=0.8)
+            
+            nonisotropic_r2 = task_results['nonisotropic']['r2']
+            if nonisotropic_r2 and all(v is not None for v in nonisotropic_r2):
+                ax2.plot(noise_levels, nonisotropic_r2, 's--', color=colors[1], 
+                        linewidth=2, markersize=6, label='Non-isotropic Noise', alpha=0.8)
+            
+            ax2.set_xlabel('Noise Level', fontsize=12, fontweight='bold')
+            ax2.set_ylabel('R² Score', fontsize=12, fontweight='bold')
+            ax2.set_title(f'{task_name.replace("_", " ").title()} - R² vs Noise Level', fontsize=14, fontweight='bold')
+            ax2.grid(True, alpha=0.3)
+            ax2.legend(fontsize=11)
+            
+            # Add some padding to y-axis for both subplots
+            for ax in [ax1, ax2]:
+                y_min, y_max = ax.get_ylim()
+                y_range = y_max - y_min
+                ax.set_ylim(y_min - 0.05 * y_range, y_max + 0.05 * y_range)
+            
+            # Save plot
+            plot_filename = f'{task_name}_utility_vs_noise.png'
+            plot_path = os.path.join(output_dir, plot_filename)
+            plt.tight_layout()
+            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+            print(f"Saved plot: {plot_path}")
+            plt.close()
     
     # Create a summary plot with all tasks
-    fig, axes = plt.subplots(1, len(results), figsize=(5 * len(results), 5))
-    if len(results) == 1:
-        axes = [axes]
+    num_tasks = len(results)
+    fig, axes = plt.subplots(2, num_tasks, figsize=(5 * num_tasks, 10))
+    if num_tasks == 1:
+        axes = axes.reshape(2, 1)
     
     for idx, (task_name, task_results) in enumerate(results.items()):
-        if task_name not in task_info:
-            continue
+        if task_name == 'rf_fingerprinting':
+            # RF fingerprinting - only accuracy
+            ax = axes[0, idx]
             
-        ax = axes[idx]
-        
-        # Plot isotropic results
-        isotropic_values = task_results['isotropic']
-        ax.plot(noise_levels, isotropic_values, 'o-', color=colors[0], 
-               linewidth=2, markersize=4, label='Isotropic', alpha=0.8)
-        
-        # Plot non-isotropic results if available
-        nonisotropic_values = task_results['nonisotropic']
-        if nonisotropic_values and all(v is not None for v in nonisotropic_values):
-            ax.plot(noise_levels, nonisotropic_values, 's--', color=colors[1], 
-                   linewidth=2, markersize=4, label='Non-isotropic', alpha=0.8)
-        
-        ax.set_xlabel('Noise Level', fontsize=10)
-        ax.set_ylabel(task_info[task_name]["metric_name"], fontsize=10)
-        ax.set_title(task_name.replace('_', ' ').title(), fontsize=11, fontweight='bold')
-        ax.grid(True, alpha=0.3)
-        if idx == 0:  # Only add legend to first subplot
-            ax.legend(fontsize=9)
+            isotropic_values = task_results['isotropic']
+            ax.plot(noise_levels, isotropic_values, 'o-', color=colors[0], 
+                   linewidth=2, markersize=4, label='Isotropic', alpha=0.8)
+            
+            nonisotropic_values = task_results['nonisotropic']
+            if nonisotropic_values and all(v is not None for v in nonisotropic_values):
+                ax.plot(noise_levels, nonisotropic_values, 's--', color=colors[1], 
+                       linewidth=2, markersize=4, label='Non-isotropic', alpha=0.8)
+            
+            ax.set_xlabel('Noise Level', fontsize=10)
+            ax.set_ylabel('Accuracy', fontsize=10)
+            ax.set_title('RF Fingerprinting', fontsize=11, fontweight='bold')
+            ax.grid(True, alpha=0.3)
+            if idx == 0:
+                ax.legend(fontsize=9)
+            
+            # Hide the second row for RF
+            axes[1, idx].set_visible(False)
+            
+        elif task_name in ['cfo_estimation', 'channel_estimation']:
+            # CFO and Channel - MSE and R²
+            ax1 = axes[0, idx]  # MSE
+            ax2 = axes[1, idx]  # R²
+            
+            # Plot MSE
+            isotropic_mse = task_results['isotropic']['mse']
+            ax1.plot(noise_levels, isotropic_mse, 'o-', color=colors[0], 
+                    linewidth=2, markersize=4, label='Isotropic', alpha=0.8)
+            
+            nonisotropic_mse = task_results['nonisotropic']['mse']
+            if nonisotropic_mse and all(v is not None for v in nonisotropic_mse):
+                ax1.plot(noise_levels, nonisotropic_mse, 's--', color=colors[1], 
+                        linewidth=2, markersize=4, label='Non-isotropic', alpha=0.8)
+            
+            ax1.set_xlabel('Noise Level', fontsize=10)
+            ax1.set_ylabel('MSE', fontsize=10)
+            ax1.set_title(f'{task_name.replace("_", " ").title()}\nMSE', fontsize=11, fontweight='bold')
+            ax1.grid(True, alpha=0.3)
+            if idx == 0:
+                ax1.legend(fontsize=9)
+            
+            # Plot R²
+            isotropic_r2 = task_results['isotropic']['r2']
+            ax2.plot(noise_levels, isotropic_r2, 'o-', color=colors[0], 
+                    linewidth=2, markersize=4, label='Isotropic', alpha=0.8)
+            
+            nonisotropic_r2 = task_results['nonisotropic']['r2']
+            if nonisotropic_r2 and all(v is not None for v in nonisotropic_r2):
+                ax2.plot(noise_levels, nonisotropic_r2, 's--', color=colors[1], 
+                        linewidth=2, markersize=4, label='Non-isotropic', alpha=0.8)
+            
+            ax2.set_xlabel('Noise Level', fontsize=10)
+            ax2.set_ylabel('R² Score', fontsize=10)
+            ax2.set_title(f'{task_name.replace("_", " ").title()}\nR²', fontsize=11, fontweight='bold')
+            ax2.grid(True, alpha=0.3)
+            if idx == 0:
+                ax2.legend(fontsize=9)
     
     plt.tight_layout()
     summary_plot_path = os.path.join(output_dir, 'all_tasks_utility_vs_noise.png')
@@ -494,7 +637,7 @@ def main():
                        help='Minimum noise level.')
     parser.add_argument('--noise_max', type=float, default=10.0, 
                        help='Maximum noise level.')
-    parser.add_argument('--noise_steps', type=int, default=21, 
+    parser.add_argument('--noise_steps', type=int, default=4, 
                        help='Number of noise levels to test.')
     parser.add_argument('--fim_samples', type=int, default=8000, 
                        help='Number of samples to use for FIM calculation.')
@@ -567,10 +710,22 @@ def main():
     # Save results to JSON
     results_json = {}
     for task_name, task_results in results.items():
-        results_json[task_name] = {
-            'isotropic': [float(x) for x in task_results['isotropic']],
-            'nonisotropic': [float(x) if x is not None else None for x in task_results['nonisotropic']]
-        }
+        if task_name in ['cfo_estimation', 'channel_estimation']:
+            results_json[task_name] = {
+                'mse': {
+                    'isotropic': [float(x) for x in task_results['isotropic']['mse']],
+                    'nonisotropic': [float(x) if x is not None else None for x in task_results['nonisotropic']['mse']]
+                },
+                'r2': {
+                    'isotropic': [float(x) for x in task_results['isotropic']['r2']],
+                    'nonisotropic': [float(x) if x is not None else None for x in task_results['nonisotropic']['r2']]
+                }
+            }
+        else:
+            results_json[task_name] = {
+                'isotropic': [float(x) for x in task_results['isotropic']],
+                'nonisotropic': [float(x) if x is not None else None for x in task_results['nonisotropic']]
+            }
     
     results_path = os.path.join(cli_args.output_dir, 'utility_results.json')
     with open(results_path, 'w') as f:

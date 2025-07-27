@@ -54,6 +54,9 @@ def inject_nonisotropic_noise(z, noise_level, L, V):
         # The total noise variance is distributed inversely proportional to eigenvalues.
         # Variances σ_i^2 = c / λ_i, where sum(σ_i^2) = noise_level.
         # This implies c = noise_level / sum(1 / λ_i).
+        #do noise varianche 1/lambda_i^alpha
+        # alpha = 2
+        # L = L**alpha
         inv_L = 1.0 / (L + 1e-7)  # Add small epsilon for stability
         c = noise_level / torch.sum(inv_L)
         aniso_variances = c * inv_L

@@ -26,7 +26,6 @@ from rep_lr.models import (RFClassificationHead, CFOEstimationHead, SimpleCFOEst
 def get_empirical_fim(head, data_loader, device, latent_dim):
     """Calculates the empirical Fisher Information Matrix for a given task head."""
     fim = torch.zeros((latent_dim, latent_dim), device=device)
-    criterion = nn.MSELoss() # Assuming regression for simplicity, might need adjustment
     num_samples = 0
     head.to(device).eval()
 
@@ -35,7 +34,13 @@ def get_empirical_fim(head, data_loader, device, latent_dim):
     if is_classification:
         criterion = nn.CrossEntropyLoss()
     else:
-        criterion = nn.MSELoss()
+        # Use the same complex MSE loss as in training for consistency
+        mse_loss = nn.MSELoss()
+        def complex_mse_loss(pred, target):
+            pred_flat = pred.view(pred.size(0), -1)
+            target_flat = target.view(target.size(0), -1)
+            return mse_loss(pred_flat, target_flat)
+        criterion = complex_mse_loss
 
 
     for batch in tqdm(data_loader, desc="Calculating FIM"):
@@ -58,6 +63,9 @@ def get_empirical_fim(head, data_loader, device, latent_dim):
             y_target = cfo_labels.to(device).float()
         elif isinstance(head, ChannelEstimationHead):
             y_target = ch_labels.to(device)
+            # Fix channel label shape: [batch, 1, 2, 52] -> [batch, 2, 52]
+            if y_target.dim() == 4 and y_target.size(1) == 1:
+                y_target = y_target.squeeze(1)
         else:
             continue # Should not happen
 
@@ -242,6 +250,16 @@ def evaluate_cfo_utility(head, test_dl, device, output_dir, mean_cfo, std_cfo, n
 def evaluate_channel_utility(head, test_dl, device, output_dir, noise_level, L=None, V=None, noise_type='isotropic'):
     head.to(device).eval()
     all_y_true, all_y_pred, evaluation_results = [], [], []
+    
+    # Define the same complex MSE loss as used in training
+    mse_loss = nn.MSELoss()
+    def complex_mse_loss(pred, target):
+        pred_flat = pred.view(pred.size(0), -1)
+        target_flat = target.view(target.size(0), -1)
+        return mse_loss(pred_flat, target_flat)
+    
+    total_training_loss = 0.0
+    num_samples = 0
 
     with torch.no_grad():
         for _, _, _, _, _, labels, activations, file_paths in tqdm(test_dl, desc="Evaluating Channel Utility"):
@@ -261,6 +279,11 @@ def evaluate_channel_utility(head, test_dl, device, output_dir, noise_level, L=N
             noisy_activations = noisy_activations.view(noisy_activations.size(0), 2, -1)
 
             outputs = head(noisy_activations)
+            
+            # Compute training loss for this batch
+            batch_loss = complex_mse_loss(outputs, labels)
+            total_training_loss += batch_loss.item() * labels.size(0)
+            num_samples += labels.size(0)
             
             for i in range(labels.size(0)):
                 true_val = labels[i].cpu().numpy()
@@ -305,7 +328,11 @@ def evaluate_channel_utility(head, test_dl, device, output_dir, noise_level, L=N
     mse_imag = mean_squared_error(y_true_imag, y_pred_imag)
     r2_imag = r2_score(y_true_imag, y_pred_imag)
     
+    # Compute average training loss
+    avg_training_loss = total_training_loss / num_samples if num_samples > 0 else 0.0
+    
     metrics = {
+        'training_loss': float(avg_training_loss),  # Same loss as used in training
         'nmse': float(nmse),
         'nmse_db': float(nmse_db),
         'real_part': {
@@ -321,6 +348,7 @@ def evaluate_channel_utility(head, test_dl, device, output_dir, noise_level, L=N
     }
     
     print("\nChannel Estimation Metrics:")
+    print(f"Training Loss: {avg_training_loss:.4f}")  # Same loss as used in training
     print(f"NMSE: {nmse:.4f}")
     print(f"NMSE (dB): {nmse_db:.4f}")
     print("\nReal Part Metrics:")
@@ -409,7 +437,9 @@ def collect_results_and_plot(base_output_dir, tasks):
     Collect all generated JSON results and create plots.
     """
     print("\n--- Collecting results and generating plots ---")
-    results = {task: {'isotropic': [], 'nonisotropic': []} for task in tasks}
+    # Initialize results structure for both R² and MSE metrics
+    results_r2 = {task: {'isotropic': [], 'nonisotropic': []} for task in tasks}
+    results_mse = {task: {'isotropic': [], 'nonisotropic': []} for task in tasks}
     noise_levels = np.linspace(0, 10, 11)
 
     for noise_type in ['isotropic', 'nonisotropic']:
@@ -418,40 +448,48 @@ def collect_results_and_plot(base_output_dir, tasks):
             results_dir = os.path.join(base_output_dir, noise_type, noise_level_str)
 
             for task in tasks:
-                metric = 0.0
+                r2_metric = 0.0
+                mse_metric = 0.0
+                
                 if task == 'rf_fingerprinting':
                     filepath = os.path.join(results_dir, 'rf_classification_report.json')
                     if os.path.exists(filepath):
                         with open(filepath, 'r') as f:
                             report = json.load(f)
-                            metric = report['accuracy']
+                            r2_metric = report['accuracy']  # Use accuracy for RF
+                            mse_metric = 1.0 - report['accuracy']  # Error rate as MSE proxy
                 elif task == 'cfo_estimation':
                     filepath = os.path.join(results_dir, 'cfo_metrics.json')
                     if os.path.exists(filepath):
                         with open(filepath, 'r') as f:
-                            metric = json.load(f)['r2_score']
+                            metrics = json.load(f)
+                            r2_metric = metrics['r2_score']
+                            mse_metric = metrics['mse']  # Use real MSE for CFO
                 elif task == 'channel_estimation':
                     filepath = os.path.join(results_dir, 'channel_metrics.json')
                     if os.path.exists(filepath):
                         with open(filepath, 'r') as f:
+                            metrics = json.load(f)
                             # Average the R² of real and imaginary parts
-                            m = json.load(f)
-                            metric = (m['real_part']['r2_score'] + m['imaginary_part']['r2_score']) / 2.0
+                            r2_metric = (metrics['real_part']['r2_score'] + metrics['imaginary_part']['r2_score']) / 2.0
+                            # Average the MSE of real and imaginary parts
+                            mse_metric = (metrics['real_part']['mse'] + metrics['imaginary_part']['mse']) / 2.0
                 
-                results[task][noise_type].append(metric)
+                results_r2[task][noise_type].append(r2_metric)
+                results_mse[task][noise_type].append(mse_metric)
 
-    # --- Plotting ---
+    # --- Plotting R² Scores ---
     plt.style.use('seaborn-v0_8-darkgrid')
     colors = plt.cm.get_cmap('viridis', 4)
 
-    for task, data in results.items():
+    for task, data in results_r2.items():
         plt.figure(figsize=(12, 7))
         metric_name = 'Accuracy' if task == 'rf_fingerprinting' else 'R² Score'
         
         plt.plot(noise_levels, data['isotropic'], 'o-', color=colors(0.3), linewidth=2, markersize=8, label='Isotropic Noise')
         plt.plot(noise_levels, data['nonisotropic'], 's--', color=colors(0.7), linewidth=2, markersize=8, label='Non-isotropic Noise')
 
-        plt.title(f'{task.replace("_", " ").title()} Utility vs Noise Level', fontsize=16, fontweight='bold')
+        plt.title(f'{task.replace("_", " ").title()} R² Score vs Noise Level', fontsize=16, fontweight='bold')
         plt.xlabel('Noise Level', fontsize=14)
         plt.ylabel(metric_name, fontsize=14)
         plt.xticks(fontsize=12)
@@ -459,10 +497,43 @@ def collect_results_and_plot(base_output_dir, tasks):
         plt.legend(fontsize=12)
         plt.grid(True, which='both', linestyle='--', linewidth=0.5)
 
-        plot_path = os.path.join(base_output_dir, f'{task}_utility_vs_noise.png')
+        plot_path = os.path.join(base_output_dir, f'{task}_r2_vs_noise.png')
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-        print(f"Saved plot: {plot_path}")
+        print(f"Saved R² plot: {plot_path}")
         plt.close()
+
+    # --- Plotting MSE Scores (for CFO and Channel only) ---
+    for task, data in results_mse.items():
+        if task in ['cfo_estimation', 'channel_estimation']:
+            plt.figure(figsize=(12, 7))
+            
+            plt.plot(noise_levels, data['isotropic'], 'o-', color=colors(0.3), linewidth=2, markersize=8, label='Isotropic Noise')
+            plt.plot(noise_levels, data['nonisotropic'], 's--', color=colors(0.7), linewidth=2, markersize=8, label='Non-isotropic Noise')
+
+            plt.title(f'{task.replace("_", " ").title()} MSE vs Noise Level', fontsize=16, fontweight='bold')
+            plt.xlabel('Noise Level', fontsize=14)
+            plt.ylabel('MSE', fontsize=14)
+            plt.xticks(fontsize=12)
+            plt.yticks(fontsize=12)
+            plt.legend(fontsize=12)
+            plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+
+            plot_path = os.path.join(base_output_dir, f'{task}_mse_vs_noise.png')
+            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+            print(f"Saved MSE plot: {plot_path}")
+            plt.close()
+
+    # --- Save aggregated results to JSON ---
+    aggregated_results = {
+        'noise_levels': noise_levels.tolist(),
+        'r2_scores': results_r2,
+        'mse_scores': results_mse
+    }
+    
+    results_json_path = os.path.join(base_output_dir, 'aggregated_utility_results.json')
+    with open(results_json_path, 'w') as f:
+        json.dump(aggregated_results, f, indent=4)
+    print(f"Saved aggregated results to: {results_json_path}")
 
 def main():
     parser = argparse.ArgumentParser(description='Run utility evaluations across noise levels and plot results.')

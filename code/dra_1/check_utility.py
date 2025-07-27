@@ -26,7 +26,6 @@ from rep_lr.models import (RFClassificationHead, CFOEstimationHead, SimpleCFOEst
 def get_empirical_fim(head, data_loader, device, latent_dim):
     """Calculates the empirical Fisher Information Matrix for a given task head."""
     fim = torch.zeros((latent_dim, latent_dim), device=device)
-    criterion = nn.MSELoss() # Assuming regression for simplicity, might need adjustment
     num_samples = 0
     head.to(device).eval()
 
@@ -35,7 +34,13 @@ def get_empirical_fim(head, data_loader, device, latent_dim):
     if is_classification:
         criterion = nn.CrossEntropyLoss()
     else:
-        criterion = nn.MSELoss()
+        # Use the same complex MSE loss as in training for consistency
+        mse_loss = nn.MSELoss()
+        def complex_mse_loss(pred, target):
+            pred_flat = pred.view(pred.size(0), -1)
+            target_flat = target.view(target.size(0), -1)
+            return mse_loss(pred_flat, target_flat)
+        criterion = complex_mse_loss
 
 
     for batch in tqdm(data_loader, desc="Calculating FIM"):
@@ -58,6 +63,9 @@ def get_empirical_fim(head, data_loader, device, latent_dim):
             y_target = cfo_labels.to(device).float()
         elif isinstance(head, ChannelEstimationHead):
             y_target = ch_labels.to(device)
+            # Fix channel label shape: [batch, 1, 2, 52] -> [batch, 2, 52]
+            if y_target.dim() == 4 and y_target.size(1) == 1:
+                y_target = y_target.squeeze(1)
         else:
             continue # Should not happen
 
@@ -242,6 +250,16 @@ def evaluate_cfo_utility(head, test_dl, device, output_dir, mean_cfo, std_cfo, n
 def evaluate_channel_utility(head, test_dl, device, output_dir, noise_level, L=None, V=None, noise_type='isotropic'):
     head.to(device).eval()
     all_y_true, all_y_pred, evaluation_results = [], [], []
+    
+    # Define the same complex MSE loss as used in training
+    mse_loss = nn.MSELoss()
+    def complex_mse_loss(pred, target):
+        pred_flat = pred.view(pred.size(0), -1)
+        target_flat = target.view(target.size(0), -1)
+        return mse_loss(pred_flat, target_flat)
+    
+    total_training_loss = 0.0
+    num_samples = 0
 
     with torch.no_grad():
         for _, _, _, _, _, labels, activations, file_paths in tqdm(test_dl, desc="Evaluating Channel Utility"):
@@ -261,6 +279,11 @@ def evaluate_channel_utility(head, test_dl, device, output_dir, noise_level, L=N
             noisy_activations = noisy_activations.view(noisy_activations.size(0), 2, -1)
 
             outputs = head(noisy_activations)
+            
+            # Compute training loss for this batch
+            batch_loss = complex_mse_loss(outputs, labels)
+            total_training_loss += batch_loss.item() * labels.size(0)
+            num_samples += labels.size(0)
             
             for i in range(labels.size(0)):
                 true_val = labels[i].cpu().numpy()
@@ -305,7 +328,11 @@ def evaluate_channel_utility(head, test_dl, device, output_dir, noise_level, L=N
     mse_imag = mean_squared_error(y_true_imag, y_pred_imag)
     r2_imag = r2_score(y_true_imag, y_pred_imag)
     
+    # Compute average training loss
+    avg_training_loss = total_training_loss / num_samples if num_samples > 0 else 0.0
+    
     metrics = {
+        'training_loss': float(avg_training_loss),  # Same loss as used in training
         'nmse': float(nmse),
         'nmse_db': float(nmse_db),
         'real_part': {
@@ -321,6 +348,7 @@ def evaluate_channel_utility(head, test_dl, device, output_dir, noise_level, L=N
     }
     
     print("\nChannel Estimation Metrics:")
+    print(f"Training Loss: {avg_training_loss:.4f}")  # Same loss as used in training
     print(f"NMSE: {nmse:.4f}")
     print(f"NMSE (dB): {nmse_db:.4f}")
     print("\nReal Part Metrics:")
