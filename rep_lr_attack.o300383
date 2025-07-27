@@ -32,11 +32,7 @@ no change     /scratch/10608/aadharsh_aadhithya/miniconda/lib/python3.13/site-pa
 no change     /scratch/10608/aadharsh_aadhithya/miniconda/etc/profile.d/conda.csh
 no change     /home1/10608/aadharsh_aadhithya/.bashrc
 No action taken.
-Starting 4 parallel runs of experiment.sh...
-Logs for each run will be saved in: /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/parallel_run_logs
-Experiment results will be created by experiments.sh in timestamped directories.
-Launching run with ID: 1
-Launching run with ID: 2
-Launching run with ID: 3
-Launching run with ID: 4
-All 4 runs have completed. 🚀
+  File "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/run_attack_exps.py", line 81
+    lr=1e-4, batch_size=64, patience=10, latent_dim=512, output_dir=None):
+                                                                        ^
+SyntaxError: unmatched ')'

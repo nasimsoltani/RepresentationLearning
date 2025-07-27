@@ -12,9 +12,7 @@ env_vars_from_dotenv = dotenv.dotenv_values()
 safe_env_vars = {k: v for k, v in env_vars_from_dotenv.items() if v is not None}
 
 
-# --- Ray Worker Function ---
-# This is the ONLY part you need to change.
-@ray.remote(num_gpus=0.1) # <-- CRITICAL CHANGE HERE
+@ray.remote(num_gpus=0.05) 
 def run_command(command: str, task_type: str):
     """
     This worker function now only 'reserves' 0.1 of a GPU's compute.
@@ -72,6 +70,7 @@ tasks = os.listdir(results_path)
     
 
 
+
 def generate_attack_command(experiment_path, activations_path, task, output_dir, noise_type="none",
                              noise_level=0.0, fim_samples=1000, leaked_fraction=1.0, epochs=30,
                                lr=1e-4, batch_size=256, patience=10, latent_dim=512):
@@ -81,7 +80,8 @@ def generate_attack_command(experiment_path, activations_path, task, output_dir,
           f"--noise_type {noise_type} --noise_level {noise_level} "
           f"--fim_samples {fim_samples} --leaked_fraction {leaked_fraction} "
           f"--epochs {epochs} --lr {lr} --batch_size {batch_size} "
-          f"--patience {patience} --latent_dim {latent_dim}")
+          f"--patience {patience} --latent_dim {latent_dim} "
+          f"--use_lr_scheduler")
 
     # if is_uv:
     #     cmd = "uv run " + cmd
@@ -113,8 +113,7 @@ def main():
     for task in experiment_tasks:
 
         #skip loop if len of task grater than 1
-        if len(task) > 1:
-            continue
+        
 
         activations_path = os.path.join(activations_base, )
         task_path = os.path.join(results_path, "_".join(task))
@@ -158,15 +157,15 @@ def main():
 
         print(f"Generating attack commands for {task}")
         #task-> [t1, t2, t3]
-        noise_types = ['nonisotropic']
+        noise_types = ["none","isotropic",'nonisotropic']
         
-        leaked_fractions = [0.1]
+        leaked_fractions = [0.1,0.5,1.0]
 
         for noise_type in noise_types:
             if noise_type == "none":
                 noise_levels = [0]
             else:
-                noise_levels = [2]
+                noise_levels = [1,5,10,15]
             
             for noise_level in noise_levels:
                 for leaked_fraction in leaked_fractions:

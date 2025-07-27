@@ -14,6 +14,9 @@ class Decoder(nn.Module):
             nn.Linear(512, 1024),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout),
+            nn.Linear(1024, 1024),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
             nn.Unflatten(1, (64, 16)),  # (batch, 64, 16)
         )
         

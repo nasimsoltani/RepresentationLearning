@@ -8,8 +8,11 @@
 # top-level results directory.
 #
 # Usage:
-# 1. Set the `RESULTS_DIR` variable to the main results folder (e.g., 'results_20250616_190950').
-# 2. Adjust GPU ID and test fraction as needed.
+# 1. Run without arguments to use the default results directory
+#    ./scripts/batch_eval_1.sh
+# 2. Or provide a custom results directory as an argument:
+#    ./scripts/batch_eval_1.sh /path/to/results/directory
+# 3. Adjust GPU ID and test fraction as needed in the script.
 #
 # The script will search for the '*_best.pt' file in each subdirectory and run
 # `code/rep_lr/eval.py` on it.
@@ -28,7 +31,15 @@ fi
 
 
 # IMPORTANT: SET THIS PATH to the top-level directory containing all your experiment results.
-RESULTS_DIR="/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250721_015529" # <-- CHANGE THIS
+# Can be overridden by command line argument
+DEFAULT_RESULTS_DIR="/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1"
+
+# Parse command line arguments
+if [ $# -eq 1 ]; then
+    RESULTS_DIR="$1"
+else
+    RESULTS_DIR="$DEFAULT_RESULTS_DIR"
+fi
 
 # IMPORTANT: SET THIS to the path of the .pkl dataset to use for all evaluations.
 EVAL_DATASET_PATH="$PKL_FILE_PATH/rf_partition_dict_0.5.pkl" 

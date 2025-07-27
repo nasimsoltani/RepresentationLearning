@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Subset
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
 import pickle
 from tqdm import tqdm
@@ -82,12 +83,11 @@ def main(args):
     print(f"Using device: {device}")
 
     # --- Paths and Directories ---
-    # Determine the save directory. Prioritize the new --output_dir argument.
+    # Determine the output directory
     if args.output_dir:
         save_dir = args.output_dir
     else:
-        # Fallback to the old method if --output_dir is not provided
-        print("Warning: --output_dir not specified. Constructing save path based on attack parameters. This may overwrite previous results.")
+        # Fallback for standalone runs: create a directory based on parameters
         save_dir = os.path.join(
             args.experiment_path, 
             'attack_results_robust', 
@@ -99,7 +99,7 @@ def main(args):
     os.makedirs(save_dir, exist_ok=True)
     print(f"Results will be saved in: {save_dir}")
 
-    # Save args for reproducibility right after determining the save directory
+    # Save args for reproducibility inside the final output directory
     with open(os.path.join(save_dir, 'attack_args.json'), 'w') as f:
         json.dump(vars(args), f, indent=4)
 
@@ -123,7 +123,7 @@ def main(args):
 
     # Initialize wandb
     wandb.init(
-        project="data-reconstruction-attack",
+        project="data-reconstruction-attack-bulk-12",
         config=wandb_config,
         name=f"attack_{args.task}_noise_{args.noise_type}_level_{args.noise_level}"
     )
@@ -137,9 +137,6 @@ def main(args):
     if not os.path.isdir(activation_dir):
         raise FileNotFoundError(f"Activations directory not found at {activation_dir}")
 
-    # The save_dir is now determined above, so we don't need this block.
-    # os.makedirs(save_dir, exist_ok=True)
-    # print(f"Results will be saved in: {save_dir}")
 
     # --- Load Data ---
     pkl_file_path = os.environ.get('PKL_FILE_PATH')
@@ -217,6 +214,12 @@ def main(args):
     optimizer = optim.Adam(decoder.parameters(), lr=args.lr)
     criterion = nn.MSELoss() 
     
+    scheduler = None
+    if args.use_lr_scheduler:
+        # Reduce learning rate when validation loss plateaus
+        scheduler = ReduceLROnPlateau(optimizer, 'min', patience=args.patience // 2, factor=0.2, verbose=True)
+        print("Learning rate scheduler (ReduceLROnPlateau) enabled.")
+    
     best_val_loss = float('inf')
     patience_counter = 0
     epoch_history = []
@@ -286,7 +289,14 @@ def main(args):
         avg_val_loss = total_val_loss / len(val_loader)
         
         print(f"Epoch {epoch+1}: Train Loss: {avg_train_loss:.6f}, Val Loss: {avg_val_loss:.6f}")
-        wandb.log({"epoch": epoch, "train_loss": avg_train_loss, "val_loss": avg_val_loss})
+        
+        # Log learning rate and other metrics to wandb
+        current_lr = optimizer.param_groups[0]['lr']
+        wandb.log({"epoch": epoch, "train_loss": avg_train_loss, "val_loss": avg_val_loss, "learning_rate": current_lr})
+
+        # Step the learning rate scheduler
+        if scheduler:
+            scheduler.step(avg_val_loss)
 
         # Early stopping and checkpointing
         if avg_val_loss < best_val_loss:
@@ -323,6 +333,10 @@ def main(args):
     test_results = []
     total_test_mse = 0
     
+    # Lists to store all true and predicted data for saving to a .npz file
+    all_true_data = []
+    all_pred_data = []
+    
     with torch.no_grad():
         for i, batch in enumerate(tqdm(test_loader, desc="Testing")):
             rf_x, _, cfo_x, _, channel_x, _, activations, filenames = batch
@@ -347,19 +361,16 @@ def main(args):
             mse_per_sample = ((recons - true_data)**2).mean(dim=[1, 2])
             total_test_mse += mse_per_sample.sum().item()
 
-            # Store results for JSON output
-            # Use .clone().detach() to create a deep copy of the tensor data,
-            # preventing it from being overwritten in the next loop iteration.
-            recons_copy = recons.clone().detach()
-            true_data_copy = true_data.clone().detach()
-
+            # Store results for JSON output (without raw data)
             for j in range(len(filenames)):
                 test_results.append({
                     'name': filenames[j],
-                    f'true_{args.task}_x': true_data_copy[j].cpu().numpy().tolist(),
-                    f'pred_{args.task}_x': recons_copy[j].cpu().numpy().tolist(),
                     'MSE': mse_per_sample[j].item()
                 })
+            
+            # Append full data to lists for .npz saving
+            all_true_data.append(true_data.clone().detach().cpu().numpy())
+            all_pred_data.append(recons.clone().detach().cpu().numpy())
 
     avg_test_mse = total_test_mse / len(test_dataset)
     print(f"\nFinal Test MSE: {avg_test_mse:.6f}")
@@ -369,12 +380,21 @@ def main(args):
     results_path = os.path.join(save_dir, f"attack_{args.task}_results.json")
     with open(results_path, 'w') as f:
         json.dump(test_results, f, indent=4)
-    print(f"Test results saved to {results_path}")
+    print(f"Test results (metrics only) saved to {results_path}")
+
+    # Save the large arrays to a compressed NPZ file
+    npz_path = os.path.join(save_dir, f"attack_{args.task}_tensors.npz")
+    # Concatenate lists of batches into single numpy arrays
+    all_true_data_np = np.concatenate(all_true_data, axis=0)
+    all_pred_data_np = np.concatenate(all_pred_data, axis=0)
+    np.savez_compressed(npz_path, true_x=all_true_data_np, pred_x=all_pred_data_np)
+    print(f"Full signal data saved to {npz_path}")
 
     # --- Visualize a few reconstructions ---
     print("Generating reconstruction plot...")
-    originals = torch.tensor(np.array([res[f'true_{args.task}_x'] for res in test_results[:5]]))
-    reconstructions = torch.tensor(np.array([res[f'pred_{args.task}_x'] for res in test_results[:5]]))
+    # Visualize from the collected numpy arrays
+    originals = torch.from_numpy(all_true_data_np[:5])
+    reconstructions = torch.from_numpy(all_pred_data_np[:5])
 
     # For the RF task, plot only a slice to avoid slow plotting with long sequences
     plot_slice = slice(None)  # Plot everything by default
@@ -416,7 +436,7 @@ if __name__ == '__main__':
     # Paths and identifiers
     parser.add_argument('--experiment_path', type=str, required=True, help="Path to the experiment directory.")
     parser.add_argument('--activations_path', type=str, default=None, help="Path to activations directory. If not provided, will use <experiment_path>/activations.")
-    parser.add_argument('--output_dir', type=str, default=None, help="Directory to save all outputs. If specified, this will be used as the primary save location, preventing overwrites.")
+    parser.add_argument('--output_dir', type=str, default=None, help="Path to the output directory for results. If not provided, a path will be constructed based on experiment parameters.")
     
     # Task and Noise
     parser.add_argument('--task', type=str, required=True, choices=['rf', 'cfo', 'channel'], help="Task to attack.")
@@ -430,13 +450,11 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=1e-4, help="Learning rate for the decoder.")
     parser.add_argument('--batch_size', type=int, default=64, help="Batch size.")
     parser.add_argument('--patience', type=int, default=5, help="Patience for early stopping.")
+    parser.add_argument('--use_lr_scheduler', action='store_true', help="Enable learning rate scheduler (ReduceLROnPlateau).")
 
     # Model parameters
     parser.add_argument('--latent_dim', type=int, default=512, help="Dimension of the latent space.")
     
     args = parser.parse_args()
     
-    # The responsibility of saving arguments is now moved inside the main() function
-    # to ensure it happens after the final save_dir is determined.
-        
     main(args) 

@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 import torch.optim
 from torch.utils.data import Dataset, DataLoader, random_split
-from py_datasets import TrainDataset
+from py_datasets import TrainDataset, TrainDatasetRFixed
 from models import (ComplexSequenceProjector, UpsamplingProjector, Encoder, 
                    RFClassificationHead, ChannelEstimationHead, CFOEstimationHead, SimpleCFOEstimationHead, DirectCFOEstimationHead,
                    CFOAdaptiveHead, TaskAdaptiveEncoder)
@@ -62,6 +62,10 @@ def main():
                         help='Use CFO-adaptive head for better MTL performance.')
     parser.add_argument('--task_adaptive_encoder', action='store_true',
                         help='Use task-adaptive encoder designed for multi-task learning. Works with variable encoder_num_blocks.')
+    parser.add_argument('--rf_begin_idx', type=int, default=0,
+                        help='Index of the first RF sample to use for training.')
+    parser.add_argument('--rf_fixed', action='store_true',
+                        help='Use fixed RF samples for training instead of random slices.')
     
     # MTL arguments
     parser.add_argument('--mtl', action='store_true', help='Enable Multi-Task Learning.')
@@ -124,8 +128,13 @@ def main():
     std_cfo = content['std_cfo']
     
     dataset_args = argparse.Namespace(slice_len=args.slice_len)
-    train_dataset = TrainDataset(train_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo)
-    val_dataset = TrainDataset(val_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo)
+
+    if args.rf_fixed:
+        train_dataset = TrainDatasetRFixed(train_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo, rf_begin_idx=args.rf_begin_idx)
+        val_dataset = TrainDatasetRFixed(val_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo, rf_begin_idx=args.rf_begin_idx)
+    else:
+        train_dataset = TrainDataset(train_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo)
+        val_dataset = TrainDataset(val_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo)
 
     train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
     val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, pin_memory=True)
