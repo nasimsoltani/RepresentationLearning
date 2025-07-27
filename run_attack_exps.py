@@ -70,18 +70,7 @@ tasks = os.listdir(results_path)
     
 
 
-<<<<<<< HEAD
-def generate_attack_command(experiment_path, activations_path, task, noise_type="none",
-<<<<<<< HEAD
-                             noise_level=0.0, fim_samples=1000, leaked_fraction=1.0, epochs=30,
-                               lr=1e-4, batch_size=256, patience=10, latent_dim=512):
-    cmd= f"python {attack_script} --experiment_path {experiment_path} --activations_path {activations_path} --task {task} --noise_type {noise_type} --noise_level {noise_level} --fim_samples {fim_samples} --leaked_fraction {leaked_fraction} --epochs {epochs} --lr {lr} --batch_size {batch_size} --patience {patience} --latent_dim {latent_dim} --use_lr_scheduler"
-=======
-                             noise_level=0.0, fim_samples=1000, leaked_fraction=1.0, epochs=70,
-                               lr=1e-4, batch_size=64, patience=10, latent_dim=512, output_dir=None):
-    cmd= f"python {attack_script} --experiment_path {experiment_path} --activations_path {activations_path} --task {task} --noise_type {noise_type} --noise_level {noise_level} --fim_samples {fim_samples} --leaked_fraction {leaked_fraction} --epochs {epochs} --lr {lr} --batch_size {batch_size} --patience {patience} --latent_dim {latent_dim}"
->>>>>>> f3a5c3fa0419af2c758fceb84da200d2d5868504
-=======
+
 def generate_attack_command(experiment_path, activations_path, task, output_dir, noise_type="none",
                              noise_level=0.0, fim_samples=1000, leaked_fraction=1.0, epochs=70,
                                lr=1e-4, batch_size=64, patience=10, latent_dim=512):
@@ -91,8 +80,8 @@ def generate_attack_command(experiment_path, activations_path, task, output_dir,
           f"--noise_type {noise_type} --noise_level {noise_level} "
           f"--fim_samples {fim_samples} --leaked_fraction {leaked_fraction} "
           f"--epochs {epochs} --lr {lr} --batch_size {batch_size} "
-          f"--patience {patience} --latent_dim {latent_dim}")
->>>>>>> e9cc1e02db3ec40ce001954ed04fe84c8fb698f1
+          f"--patience {patience} --latent_dim {latent_dim} "
+          f"--use_lr_scheduler")
 
     # if is_uv:
     #     cmd = "uv run " + cmd

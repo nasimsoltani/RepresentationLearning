@@ -123,7 +123,7 @@ def main(args):
 
     # Initialize wandb
     wandb.init(
-        project="data-reconstruction-attack",
+        project="data-reconstruction-attack-bulk-12",
         config=wandb_config,
         name=f"attack_{args.task}_noise_{args.noise_type}_level_{args.noise_level}"
     )
