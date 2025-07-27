@@ -73,8 +73,8 @@ tasks = os.listdir(results_path)
 
 
 def generate_attack_command(experiment_path, activations_path, task, output_dir, noise_type="none",
-                             noise_level=0.0, fim_samples=1000, leaked_fraction=1.0, epochs=70,
-                               lr=1e-4, batch_size=64, patience=10, latent_dim=512):
+                             noise_level=0.0, fim_samples=1000, leaked_fraction=1.0, epochs=30,
+                               lr=1e-4, batch_size=256, patience=10, latent_dim=512):
     cmd= (f"python {attack_script} --experiment_path {experiment_path} "
           f"--activations_path {activations_path} --task {task} "
           f"--output_dir {output_dir} "
