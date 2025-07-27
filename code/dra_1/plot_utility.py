@@ -667,6 +667,8 @@ def main():
                        help='Directory containing pre-computed activation files.')
     parser.add_argument('--output_dir', type=str, default=None, 
                        help='Directory to save plots. Defaults to [experiment_path]/utility_plots.')
+    parser.add_argument('--noise_levels', type=str, default=None,
+                       help='Comma-separated string of noise levels to test (e.g., "0.0,1.0,5.0,10.0"). Overrides min/max/steps.')
     parser.add_argument('--noise_min', type=float, default=0.0, 
                        help='Minimum noise level.')
     parser.add_argument('--noise_max', type=float, default=10.0, 
@@ -699,7 +701,23 @@ def main():
     print(f"Using device: {device}")
     
     # Generate noise levels
-    noise_levels = np.linspace(cli_args.noise_min, cli_args.noise_max, cli_args.noise_steps)
+    if cli_args.noise_levels:
+        try:
+            # Handle empty string case
+            if not cli_args.noise_levels:
+                noise_levels = np.array([])
+            else:
+                noise_levels = np.array(sorted([float(x.strip()) for x in cli_args.noise_levels.split(',')]))
+        except ValueError:
+            print(f"Error: Invalid format for --noise_levels: '{cli_args.noise_levels}'. Please use a comma-separated list of numbers.", file=sys.stderr)
+            sys.exit(1)
+    else:
+        noise_levels = np.linspace(cli_args.noise_min, cli_args.noise_max, cli_args.noise_steps)
+
+    if len(noise_levels) == 0:
+        print("Warning: No noise levels specified to test. Exiting.")
+        return
+    
     print(f"Testing noise levels: {noise_levels}")
     
     # Load model and setup

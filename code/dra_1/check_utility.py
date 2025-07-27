@@ -460,6 +460,14 @@ def main():
             fim = get_empirical_fim(task_head, fim_dl, device, latent_dim)
             total_fim += fim
             
+        # Normalize the FIM to prevent issues with very small eigenvalues
+        trace_fim = torch.trace(total_fim)
+        if trace_fim > 1e-10:
+            total_fim = total_fim / trace_fim
+            print(f"  Total FIM normalized by its trace: {trace_fim:.3e}")
+        else:
+            print("  Warning: Total FIM has a zero or near-zero trace. Skipping normalization.")
+
         print("Performing eigendecomposition of total FIM...")
         L_e, V = torch.linalg.eigh(total_fim)
         L = torch.relu(L_e) # Ensure non-negative eigenvalues

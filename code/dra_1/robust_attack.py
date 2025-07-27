@@ -203,6 +203,14 @@ def main(args):
             head = model_data['model']['head']
             fim = get_empirical_fim(head, fim_loader, device, args.latent_dim)
 
+        # Normalize the FIM to prevent issues with very small eigenvalues
+        trace_fim = torch.trace(fim)
+        if trace_fim > 1e-10:
+            fim = fim / trace_fim
+            print(f"  Final FIM normalized by its trace: {trace_fim:.3e}")
+        else:
+            print("  Warning: Final FIM has a zero or near-zero trace. Skipping normalization.")
+
         print("Performing eigendecomposition of the final FIM...")
         L_e, V = torch.linalg.eigh(fim)
         L = torch.relu(L_e) # Ensure non-negative eigenvalues

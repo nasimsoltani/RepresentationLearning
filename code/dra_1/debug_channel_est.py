@@ -206,6 +206,14 @@ def run_channel_evaluations(cli_args, head, test_dl, train_files, activation_dir
         print(f"Calculating FIM for channel estimation head (latent_dim: {latent_dim})")
         fim = get_empirical_fim(head, fim_dl, device, latent_dim)
         
+        # Normalize the FIM to prevent issues with very small eigenvalues
+        trace_fim = torch.trace(fim)
+        if trace_fim > 1e-10:
+            fim = fim / trace_fim
+            print(f"  FIM normalized by its trace: {trace_fim:.3e}")
+        else:
+            print("  Warning: FIM has a zero or near-zero trace. Skipping normalization.")
+
         print("Performing eigendecomposition of FIM...")
         L_e, V = torch.linalg.eigh(fim)
         L = torch.relu(L_e)  # Ensure non-negative eigenvalues
