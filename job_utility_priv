@@ -1,0 +1,30 @@
+#!/bin/bash
+#SBATCH -J rep_lr_ut           # Job name
+#SBATCH -o rep_lr_ut.o%j       # Name of stdout output file
+#SBATCH -p gh          # Queue (partition) name
+#SBATCH -N 1               # Total # of nodes
+#SBATCH -n 1               # Total # of mpi tasks
+#SBATCH -t 24:00:00        # Run time (hh:mm:ss)
+#SBATCH -A DBS24008       # Allocation name (req'd if you have more than 1)
+
+# Other commands must follow all #SBATCH directives...
+
+source $HOME/.bashrc
+
+module load gcc/13 cuda/12.6 nccl/12.4 #nvidia_math/12.6
+
+conda init
+
+conda activate vllm
+
+
+python /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/code/dra_1/plot_utility.py \
+--experiment_path /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250723_164619/cfo_channel/cfo_estimation_channel_estimation_20250724_145701 \
+--activation_dir /scratch/10608/aadharsh_aadhithya/data/rep_lr/activations_exps/results_20250723_164619/cfo_channel \
+--noise_min 0.0 \
+--noise_max 15.0 \
+--noise_steps 21 \
+--fim_samples 1000 \
+--gpu_id 0 \
+--batch_size 64 \
+

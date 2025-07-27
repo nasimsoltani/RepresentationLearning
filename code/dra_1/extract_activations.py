@@ -15,7 +15,7 @@ dotenv.load_dotenv()
 # Adjust sys.path to allow imports from the 'rep_lr' directory
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from rep_lr.py_datasets import TrainDataset
+from rep_lr.py_datasets import TrainDataset,TrainDatasetRFixed
 from torch.utils.data import DataLoader
 from dra_1.model_loader import load_model_for_extraction
 
@@ -93,7 +93,14 @@ def extract_activations(cli_args):
     ID_class_dict = {f'Radio{i}': i for i in range(16)}
     num_classes = len(ID_class_dict)
 
-    dataset = TrainDataset(data_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, test_mode=False)
+    if train_args.rf_fixed:
+        print("Using RF fixed dataset")
+        dataset = TrainDatasetRFixed(data_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, test_mode=False)
+    else:
+        print("Using RF variable dataset")
+        dataset = TrainDataset(data_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, test_mode=False)
+
+    #dataset = TrainDataset(data_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, test_mode=False)
     data_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
 
     print("Starting activation extraction.")

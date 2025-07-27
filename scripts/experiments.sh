@@ -53,7 +53,7 @@ ENCODER_NUM_BLOCKS=2
 # # 1. Single-Task: RF Fingerprinting
 # # =================================================================================
 echo "--- Starting Single-Task: RF Fingerprinting ---"
-uv run python code/rep_lr/main.py \
+python code/rep_lr/main.py \
     --task rf_fingerprinting \
     --pkl_dataset_path $DATASET_PATH \
     --save_path "${RESULTS_DIR}/rf" \
@@ -68,8 +68,8 @@ uv run python code/rep_lr/main.py \
     --dropout 0.1 \
     --task_adaptive_encoder \
     --encoder_num_blocks 2 \
-    --rf_fixed \
-    --rf_begin_idx 0
+    # --rf_fixed \
+    # --rf_begin_idx 0
 
 # # =================================================================================
 # # 2. Single-Task: CFO Estimation

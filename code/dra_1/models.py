@@ -9,13 +9,13 @@ class Decoder(nn.Module):
         # Shared decoder backbone - processes the latent vector into intermediate features
         self.shared_decoder = nn.Sequential(
             nn.Linear(latent_dim, 512),
-            nn.ReLU(inplace=True),
+            nn.LeakyReLU(inplace=True, negative_slope=0.2),  
             nn.Dropout(dropout),
             nn.Linear(512, 1024),
-            nn.ReLU(inplace=True),
+            nn.LeakyReLU(inplace=True, negative_slope=0.2),
             nn.Dropout(dropout),
             nn.Linear(1024, 1024),
-            nn.ReLU(inplace=True),
+            nn.LeakyReLU(inplace=True, negative_slope=0.2),  
             nn.Dropout(dropout),
             nn.Unflatten(1, (64, 16)),  # (batch, 64, 16)
         )
@@ -23,22 +23,35 @@ class Decoder(nn.Module):
         # Shared convolutional layers for upsampling
         self.shared_conv = nn.Sequential(
             nn.ConvTranspose1d(64, 128, kernel_size=4, stride=2, padding=1),   # Out: 128x32
-            nn.ReLU(inplace=True),
+            nn.LeakyReLU(inplace=True, negative_slope=0.2),
             nn.ConvTranspose1d(128, 64, kernel_size=4, stride=2, padding=1),   # Out: 64x64
-            nn.ReLU(inplace=True),
+            nn.LeakyReLU(inplace=True, negative_slope=0.2),
             nn.ConvTranspose1d(64, 32, kernel_size=4, stride=2, padding=1),    # Out: 32x128
             nn.ReLU(inplace=True),
         )
         
         # Task-specific output heads
-        # RF head - minimal, separate MLP decoder from latent vector
+        # RF head - similar structure to CFO head but with different output size
         self.rf_head = nn.Sequential(
-            nn.Linear(latent_dim, 1024),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(1024, 2048),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(2048, 2*1024),
+            nn.ConvTranspose1d(32, 16, kernel_size=3, stride=1, padding=1),    # Out: 16x128
+            nn.LeakyReLU(inplace=True, negative_slope=0.2),
+            #batch norm
+            nn.BatchNorm1d(16),
+            nn.ConvTranspose1d(16, 8, kernel_size=3, stride=1, padding=1),     # Out: 8x128
+            nn.LeakyReLU(inplace=True, negative_slope=0.2),
+            nn.BatchNorm1d(8),
+            nn.ConvTranspose1d(8, 2, kernel_size=3, stride=1, padding=0),      # Out: 2x130
+            #flatten and use mlp to project 260 to 1024 (2*130 = 260)
+            nn.Flatten(),
+            nn.Linear(260, 1024),
+            nn.LeakyReLU(inplace=True, negative_slope=0.2),
+            nn.BatchNorm1d(1024),
+            nn.Linear(1024, 1024),
+            nn.LeakyReLU(inplace=True, negative_slope=0.2),
+            nn.BatchNorm1d(1024),
+            nn.Linear(1024, 2*1024),
             nn.Unflatten(1, (2, 1024)),
+            #nn.Upsample(size=1024, mode='linear', align_corners=False)          # Out: 2x1024
         )
         
         # CFO head - needs to go from 128 to 160 samples
@@ -82,19 +95,18 @@ class Decoder(nn.Module):
         # z is expected to be (batch, 2, 256) -> flatten to (batch, 512)
         z_flat = z.view(z.size(0), -1)
         
+        # Shared processing for all tasks
+        shared_features = self.shared_decoder(z_flat)  # (batch, 64, 16)
+        conv_features = self.shared_conv(shared_features)  # (batch, 32, 128)
+        
         if task == 'rf':
-            rf_output = self.rf_head(z_flat)
-            return rf_output
+            return self.rf_head(conv_features)
+        elif task == 'cfo':
+            return self.cfo_head(conv_features)
+        elif task == 'channel':
+            return self.channel_head(conv_features)
         else:
-            # Shared processing
-            shared_features = self.shared_decoder(z_flat)  # (batch, 64, 16)
-            conv_features = self.shared_conv(shared_features)  # (batch, 32, 128)
-            if task == 'cfo':
-                return self.cfo_head(conv_features)
-            elif task == 'channel':
-                return self.channel_head(conv_features)
-            else:
-                raise ValueError(f"Unknown task: {task}")
+            raise ValueError(f"Unknown task: {task}")
 
 
 # Example usage:
