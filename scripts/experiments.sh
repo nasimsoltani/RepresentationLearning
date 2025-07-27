@@ -53,7 +53,7 @@ ENCODER_NUM_BLOCKS=2
 # # 1. Single-Task: RF Fingerprinting
 # # =================================================================================
 echo "--- Starting Single-Task: RF Fingerprinting ---"
-python code/rep_lr/main.py \
+uv run python code/rep_lr/main.py \
     --task rf_fingerprinting \
     --pkl_dataset_path $DATASET_PATH \
     --save_path "${RESULTS_DIR}/rf" \

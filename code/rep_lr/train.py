@@ -173,7 +173,7 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                         #    import pdb; pdb.set_trace()
 
                         #Log average of Y_true to wandb for debugging
-                        wandb.log({'train/y_true_mean': torch.mean(labels).item()}, step=epoch)
+                        wandb.log({'train/y_true_mean': torch.mean(labels.float()).item()}, step=epoch)
                         #Log norm of gradients to wandb for debugging (only for params with gradients)
                         grad_norms = [p.grad.norm() for p in model.parameters() if p.grad is not None]
                         if grad_norms:
