@@ -14,7 +14,7 @@ import re
 from models import (ComplexSequenceProjector, UpsamplingProjector, Encoder, 
                    RFClassificationHead, ChannelEstimationHead, CFOEstimationHead,
                    SimpleCFOEstimationHead, DirectCFOEstimationHead, CFOAdaptiveHead, TaskAdaptiveEncoder)
-from py_datasets import TrainDataset
+from py_datasets import TrainDataset, TrainDatasetRFixed
 from torch.utils.data import DataLoader
 
 def evaluate_rf_fingerprinting(model, test_dl, device, output_dir, class_names, args):
@@ -703,7 +703,11 @@ def main():
         ID_class_dict[this_key] = i
     num_classes = len(list(ID_class_dict.keys()))
 
-    test_dataset = TrainDataset(test_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, test_mode=True)
+    if train_args.rf_fixed:
+        test_dataset = TrainDatasetRFixed(test_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, rf_begin_idx=train_args.rf_begin_idx, test_mode=True)
+    else:
+        test_dataset = TrainDataset(test_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, test_mode=True)
+
     # Use batch_size=1 for test loader because of variable number of slices
     test_dl = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
 
