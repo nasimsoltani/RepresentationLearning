@@ -93,9 +93,9 @@ def extract_activations(cli_args):
     ID_class_dict = {f'Radio{i}': i for i in range(16)}
     num_classes = len(ID_class_dict)
 
-    if train_args.rf_fixed:
+    if getattr(train_args, 'rf_fixed', False):
         print("Using RF fixed dataset")
-        dataset = TrainDatasetRFixed(data_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, test_mode=False)
+        dataset = TrainDatasetRFixed(data_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, rf_begin_idx=getattr(train_args, 'rf_begin_idx', 0), test_mode=False)
     else:
         print("Using RF variable dataset")
         dataset = TrainDataset(data_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, test_mode=False)

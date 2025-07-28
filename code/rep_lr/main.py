@@ -129,10 +129,10 @@ def main():
     
     dataset_args = argparse.Namespace(slice_len=args.slice_len)
 
-    if args.rf_fixed:
+    if getattr(args, 'rf_fixed', False):
         print("Using RF fixed dataset")
-        train_dataset = TrainDatasetRFixed(train_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo, rf_begin_idx=args.rf_begin_idx)
-        val_dataset = TrainDatasetRFixed(val_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo, rf_begin_idx=args.rf_begin_idx)
+        train_dataset = TrainDatasetRFixed(train_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo, rf_begin_idx=getattr(args, 'rf_begin_idx', 0))
+        val_dataset = TrainDatasetRFixed(val_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo, rf_begin_idx=getattr(args, 'rf_begin_idx', 0))
     else:
         print("Using RF variable dataset Random slices")
         train_dataset = TrainDataset(train_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo)

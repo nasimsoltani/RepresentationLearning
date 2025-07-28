@@ -703,8 +703,8 @@ def main():
         ID_class_dict[this_key] = i
     num_classes = len(list(ID_class_dict.keys()))
 
-    if train_args.rf_fixed:
-        test_dataset = TrainDatasetRFixed(test_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, rf_begin_idx=train_args.rf_begin_idx, test_mode=True)
+    if getattr(train_args, 'rf_fixed', False):
+        test_dataset = TrainDatasetRFixed(test_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, rf_begin_idx=getattr(train_args, 'rf_begin_idx', 0), test_mode=True)
     else:
         test_dataset = TrainDataset(test_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, test_mode=True)
 

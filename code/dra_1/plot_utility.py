@@ -317,7 +317,7 @@ def evaluate_utility_across_noise(heads, test_dl, device, noise_levels, train_fi
                 latent_dim = head.input_dim
                 fim = get_empirical_fim(head, fim_dl, device, latent_dim)
                 
-                # Normalize the FIM to prevent issues with very small eigenvalues
+                #Normalize the FIM to prevent issues with very small eigenvalues
                 trace_fim = torch.trace(fim)
                 if trace_fim > 1e-10:
                     fim = fim / trace_fim
