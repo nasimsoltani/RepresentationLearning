@@ -12,7 +12,7 @@ env_vars_from_dotenv = dotenv.dotenv_values()
 safe_env_vars = {k: v for k, v in env_vars_from_dotenv.items() if v is not None}
 
 
-@ray.remote(num_gpus=0.05) 
+@ray.remote(num_gpus=0.04) 
 def run_command(command: str, task_type: str):
     """
     This worker function now only 'reserves' 0.1 of a GPU's compute.
@@ -72,8 +72,9 @@ tasks = os.listdir(results_path)
 
 
 def generate_attack_command(experiment_path, activations_path, task, output_dir, noise_type="none",
-                             noise_level=0.0, fim_samples=1000, leaked_fraction=1.0, epochs=30,
-                               lr=1e-3, batch_size=256, patience=30, latent_dim=512):
+                             noise_level=0.0, fim_samples=8000, leaked_fraction=1.0, epochs=40,
+                               lr=1e-3, batch_size=128, patience=30, latent_dim=512,
+                               optimizer='adamw', clip_grad_norm=1.0, lambda_factor=1e-5):
     cmd= (f"python {attack_script} --experiment_path {experiment_path} "
           f"--activations_path {activations_path} --task {task} "
           f"--output_dir {output_dir} "
@@ -81,7 +82,8 @@ def generate_attack_command(experiment_path, activations_path, task, output_dir,
           f"--fim_samples {fim_samples} --leaked_fraction {leaked_fraction} "
           f"--epochs {epochs} --lr {lr} --batch_size {batch_size} "
           f"--patience {patience} --latent_dim {latent_dim} "
-          f"--use_lr_scheduler")
+          f"--optimizer {optimizer} --clip_grad_norm {clip_grad_norm} "
+          f"--lambda_factor {lambda_factor}")
 
     # if is_uv:
     #     cmd = "uv run " + cmd
@@ -102,7 +104,7 @@ def main():
     experiment_tasks = []
 
     for task in tasks:
-        possible_tasks = ["rf", "cfo", "channel"]
+        possible_tasks = ["rf","cfo", "channel"] #removing rf for now, as it is not working, will save time
         maybe_tasks = task.split("_")
 
         if maybe_tasks[0] in possible_tasks:
@@ -160,16 +162,21 @@ def main():
         noise_types = ["none","isotropic",'nonisotropic']
         
         leaked_fractions = [0.1,0.5,1.0]
+        lambda_factors = [1e-1,1e-2, 1e-3,1e-4] # Add your desired sweep values here
+
 
         for noise_type in noise_types:
             if noise_type == "none":
                 noise_levels = [0]
             else:
-                noise_levels = [1,5,10,15]
+                noise_levels = [5,10,15,20]
             
             for noise_level in noise_levels:
                 for leaked_fraction in leaked_fractions:
                     for t in task:
+                        #do not attack rf for now
+                        if t == "rf":
+                            continue
                         
                         # Construct the results directory path
                         frac_str = str(leaked_fraction).replace('.', '_')
@@ -179,24 +186,51 @@ def main():
                         base_attack_dir = os.path.join(full_task_base_path, 'attack_results_robust', f'attack_{timestamp}')
 
                         # Define the final results directory for this specific configuration
-                        results_dir = os.path.join(base_attack_dir, t, noise_type, f'leaked_frac_{frac_str}', f'noise_level_{level_str}')
-                        
-                        attack_command = generate_attack_command(experiment_path=full_task_base_path,
-                                                                activations_path=activations_path,
-                                                                task=t,
-                                                                output_dir=results_dir,
-                                                                noise_type=noise_type,
-                                                                noise_level=noise_level,
-                                                                leaked_fraction=leaked_fraction)
-                        
-                        # Ensure the directory exists
-                        os.makedirs(results_dir, exist_ok=True)
-                        
-                        # Define the log file path and redirect output
-                        log_file_path = os.path.join(results_dir, 'attack.log')
-                        print(f"Log file path: {log_file_path}")
-                        attack_command = attack_command + f" > {log_file_path} 2>&1"
-                        attack_commands.append(attack_command)
+                        if noise_type == 'nonisotropic':
+                            for lambda_factor in lambda_factors:
+                                lambda_str = f"lambda_{str(lambda_factor).replace('.', '_')}"
+                                results_dir = os.path.join(base_attack_dir, t, noise_type, f'leaked_frac_{frac_str}', f'noise_level_{level_str}', lambda_str)
+                                
+                                attack_command = generate_attack_command(experiment_path=full_task_base_path,
+                                                                        activations_path=activations_path,
+                                                                        task=t,
+                                                                        output_dir=results_dir,
+                                                                        noise_type=noise_type,
+                                                                        noise_level=noise_level,
+                                                                        leaked_fraction=leaked_fraction,
+                                                                        optimizer='adamw',
+                                                                        clip_grad_norm=1.0,
+                                                                        lambda_factor=lambda_factor)
+                                
+                                # Ensure the directory exists
+                                os.makedirs(results_dir, exist_ok=True)
+                                
+                                # Define the log file path and redirect output
+                                log_file_path = os.path.join(results_dir, 'attack.log')
+                                print(f"Log file path: {log_file_path}")
+                                attack_command = attack_command + f" > {log_file_path} 2>&1"
+                                attack_commands.append(attack_command)
+                        else:
+                            results_dir = os.path.join(base_attack_dir, t, noise_type, f'leaked_frac_{frac_str}', f'noise_level_{level_str}')
+                            
+                            attack_command = generate_attack_command(experiment_path=full_task_base_path,
+                                                                    activations_path=activations_path,
+                                                                    task=t,
+                                                                    output_dir=results_dir,
+                                                                    noise_type=noise_type,
+                                                                    noise_level=noise_level,
+                                                                    leaked_fraction=leaked_fraction,
+                                                                    optimizer='adamw',
+                                                                    clip_grad_norm=1.0)
+                            
+                            # Ensure the directory exists
+                            os.makedirs(results_dir, exist_ok=True)
+                            
+                            # Define the log file path and redirect output
+                            log_file_path = os.path.join(results_dir, 'attack.log')
+                            print(f"Log file path: {log_file_path}")
+                            attack_command = attack_command + f" > {log_file_path} 2>&1"
+                            attack_commands.append(attack_command)
 
 
     print(f"Generated {len(activation_commands)} activation commands and {len(attack_commands)} attack commands")

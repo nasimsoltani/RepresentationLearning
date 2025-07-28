@@ -32,10 +32,10 @@ def run_command(command: str, task_type: str):
 
 # --- Configuration ---
 # You can set these paths in your .env file or modify them here.
-results_path = "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250723_164619"
+results_path = "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1"
 activations_base = os.getenv("ACTIVATIONS_BASE", "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/activations")
 utility_script = os.getenv("UTILITY_SCRIPT", "code/dra_1/plot_utility.py")
-ray_tmp_dir = os.getenv("RAY_TMP_DIR", "/tmp/ray")
+ray_tmp_dir = os.getenv("RAY_TMP_DIR")
 
 # This flag determines how the activation path is constructed.
 # Set to True if activations are stored in a central location (`activations_base`).

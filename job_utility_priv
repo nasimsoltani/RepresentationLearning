@@ -19,12 +19,12 @@ conda activate vllm
 
 
 python /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/code/dra_1/plot_utility.py \
---experiment_path /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250723_164619/cfo_channel/cfo_estimation_channel_estimation_20250724_145701 \
---activation_dir /scratch/10608/aadharsh_aadhithya/data/rep_lr/activations_exps/results_20250723_164619/cfo_channel \
+--experiment_path /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1/rf_cfo_channel/rf_fingerprinting_cfo_estimation_channel_estimation_20250725_234643 \
+--activation_dir /scratch/10608/aadharsh_aadhithya/data/rep_lr/activations_exps/run_1/rf_cfo_channel \
 --noise_min 0.0 \
---noise_max 15.0 \
---noise_steps 21 \
---fim_samples 1000 \
+--noise_max 30 \
+--noise_steps 10 \
+--fim_samples 8000 \
 --gpu_id 0 \
 --batch_size 64 \
 

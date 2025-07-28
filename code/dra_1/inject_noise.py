@@ -25,18 +25,18 @@ def inject_isotropic_noise(z, noise_level):
         epsilon = torch.randn_like(z_normalized) * per_dim_stddev
 
         #for debugging print variance of epsilon
-        print("variance of epsilon", torch.var(epsilon, dim=0))
+        #print("variance of epsilon", torch.var(epsilon, dim=0))
 
         # Add noise to the normalized vector and then scale it back to its original magnitude
         z_noisy_normalized = z_normalized + epsilon
         # Re-normalize to preserve the norm before scaling back
-        z_noisy_renormalized = z_noisy_normalized / (torch.linalg.norm(z_noisy_normalized, dim=1, keepdim=True) + 1e-7)
-        z_noisy = z_noisy_renormalized * z_norm
+        #z_noisy_renormalized = z_noisy_normalized / (torch.linalg.norm(z_noisy_normalized, dim=1, keepdim=True) + 1e-7)
+        z_noisy = z_noisy_normalized * z_norm
         return z_noisy
     return z
 
 
-def inject_nonisotropic_noise(z, noise_level, L, V):
+def inject_nonisotropic_noise(z, noise_level, L, V, lambda_factor=1e-5):
     """
     Injects anisotropic Gaussian noise based on FIM eigendecomposition.
 
@@ -57,7 +57,8 @@ def inject_nonisotropic_noise(z, noise_level, L, V):
         # The total noise variance is distributed inversely proportional to eigenvalues.
         # Variances σ_i^2 = c / λ_i, where sum(σ_i^2) = noise_level.
         # This implies c = noise_level / sum(1 / λ_i).
-        inv_L = 1.0 / (L + 1e-7)  # Add small epsilon for stability
+        lambda_ = torch.sum(L)*lambda_factor
+        inv_L = 1.0 / (L + lambda_)  # Add small epsilon for stability
         c = noise_level / torch.sum(inv_L)
         aniso_variances = c * inv_L
 
@@ -72,13 +73,13 @@ def inject_nonisotropic_noise(z, noise_level, L, V):
             base_noise = torch.randn_like(z_normalized) # (N, D_z)
             aniso_noise = (scale_tril @ base_noise.T).T
             #for debugging print variance of aniso_noise
-            print("variance of aniso_noise", torch.var(aniso_noise, dim=0))
+            #print("variance of aniso_noise", torch.var(aniso_noise, dim=0))
             
             # Add noise to normalized vector and scale back
             z_noisy_normalized = z_normalized + aniso_noise
             # Re-normalize to preserve the norm before scaling back
-            z_noisy_renormalized = z_noisy_normalized / (torch.linalg.norm(z_noisy_normalized, dim=1, keepdim=True) + 1e-7)
-            z_noisy = z_noisy_renormalized * z_norm
+            #z_noisy_renormalized = z_noisy_normalized / (torch.linalg.norm(z_noisy_normalized, dim=1, keepdim=True) + 1e-7)
+            z_noisy = z_noisy_normalized * z_norm
             return z_noisy
         except torch.linalg.LinAlgError:
             # Fallback for numerical instability
@@ -90,7 +91,7 @@ def inject_nonisotropic_noise(z, noise_level, L, V):
             # Add noise to normalized vector and scale back
             z_noisy_normalized = z_normalized + aniso_noise
             # Re-normalize to preserve the norm before scaling back
-            z_noisy_renormalized = z_noisy_normalized / (torch.linalg.norm(z_noisy_normalized, dim=1, keepdim=True) + 1e-7)
-            z_noisy = z_noisy_renormalized * z_norm
+            # z_noisy_renormalized = z_noisy_normalized / (torch.linalg.norm(z_noisy_normalized, dim=1, keepdim=True) + 1e-7)
+            z_noisy = z_noisy_normalized * z_norm
             return z_noisy
     return z 
