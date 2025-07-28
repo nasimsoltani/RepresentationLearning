@@ -33,7 +33,7 @@ def run_command(command: str, task_type: str):
 remote_activation = True #STrue
 
 
-results_path =  "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250723_164619"
+results_path =  "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1"
 #results_path =  "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
 activations_base =  os.getenv("ACTIVATIONS_BASE")# "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
 extract_activation_script = os.getenv("EXTRACT_ACTIVATION_SCRIPT")# "/home/hofmann/Documents/projects/RepresentationLearning/code/dra_1/extract_activations.py"
@@ -73,7 +73,7 @@ tasks = os.listdir(results_path)
 
 def generate_attack_command(experiment_path, activations_path, task, output_dir, noise_type="none",
                              noise_level=0.0, fim_samples=1000, leaked_fraction=1.0, epochs=30,
-                               lr=1e-4, batch_size=256, patience=10, latent_dim=512):
+                               lr=1e-3, batch_size=256, patience=30, latent_dim=512):
     cmd= (f"python {attack_script} --experiment_path {experiment_path} "
           f"--activations_path {activations_path} --task {task} "
           f"--output_dir {output_dir} "

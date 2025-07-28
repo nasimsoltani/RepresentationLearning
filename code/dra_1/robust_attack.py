@@ -123,7 +123,7 @@ def main(args):
 
     # Initialize wandb
     wandb.init(
-        project="data-reconstruction-attack-tirals-12",
+        project="data-reconstruction-attack-trial-8",
         config=wandb_config,
         name=f"attack_{args.task}_noise_{args.noise_type}_level_{args.noise_level}"
     )
@@ -185,7 +185,7 @@ def main(args):
             for task_name in train_args.task:
                 print(f"  - Calculating FIM for task: {task_name}")
                 head = model_data['model']['heads'][task_name]
-                task_fim += get_empirical_fim(head, fim_loader, device, args.latent_dim)
+                fim += get_empirical_fim(head, fim_loader, device, args.latent_dim)
                 
         
         else: # Single-task model
@@ -457,7 +457,7 @@ if __name__ == '__main__':
     # Training parameters
     parser.add_argument('--epochs', type=int, default=30, help="Max number of training epochs.")
     parser.add_argument('--lr', type=float, default=1e-3, help="Learning rate for the decoder.")
-    parser.add_argument('--batch_size', type=int, default=256, help="Batch size.")
+    parser.add_argument('--batch_size', type=int, default=64, help="Batch size.")
     parser.add_argument('--patience', type=int, default=30, help="Patience for early stopping.")
     parser.add_argument('--use_lr_scheduler', action='store_true', help="Enable learning rate scheduler (ReduceLROnPlateau).")
 

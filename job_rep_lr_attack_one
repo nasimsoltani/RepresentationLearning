@@ -19,12 +19,12 @@ conda activate vllm
 
 
 python -u /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/code/dra_1/robust_attack.py \
- --experiment_path /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250727_012000/rf/rf_fingerprinting_20250727_012011 \
- --activations_path /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250727_012000/rf/rf_fingerprinting_20250727_012011/activations \
- --output_dir /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250727_012000/rf/rf_fingerprinting_20250727_012011/robust_attack \
- --task rf \
- --noise_type none \
- --noise_level 0.0 \
- --fim_samples 1000 \
- --leaked_fraction 0.5 \
- --epochs 70 \
+ --experiment_path /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1/rf_channel \
+ --activations_path /scratch/10608/aadharsh_aadhithya/data/rep_lr/activations_exps/run_1/rf_channel \
+ --output_dir /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1/rf_channel/rf_fingerprinting_channel_estimation_20250725_195930/robust_attack \
+ --task channel \
+ --noise_type nonisotropic \
+ --noise_level 60 \
+ --fim_samples 8000 \
+ --leaked_fraction 0.1 \
+ --epochs 30 \

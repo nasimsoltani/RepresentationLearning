@@ -1,0 +1,68 @@
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) openmpi/5.0.5     2) python3/3.11.8
+
+The following have been reloaded with a version change:
+  1) cuda/12.4 => cuda/12.6
+
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) openmpi/5.0.5     2) python3/3.11.8
+
+The following have been reloaded with a version change:
+  1) cuda/12.6 => cuda/12.4
+
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) openmpi/5.0.5     2) python3/3.11.8
+
+The following have been reloaded with a version change:
+  1) cuda/12.4 => cuda/12.6
+
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/condabin/conda
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/bin/conda
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/bin/conda-env
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/bin/activate
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/bin/deactivate
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/etc/profile.d/conda.sh
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/etc/fish/conf.d/conda.fish
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/shell/condabin/Conda.psm1
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/shell/condabin/conda-hook.ps1
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/lib/python3.13/site-packages/xontrib/conda.xsh
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/etc/profile.d/conda.csh
+no change     /home1/10608/aadharsh_aadhithya/.bashrc
+No action taken.
+Using device: cuda
+Results will be saved in: /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1/rf_channel/rf_fingerprinting_channel_estimation_20250725_195930/robust_attack
+Warning: Could not load encoder training arguments: args.json not found in /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1/rf_channel
+wandb: Currently logged in as: aadharshaadhithya (aaa_2024) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.20.1
+wandb: Run data is saved locally in /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/wandb/run-20250727_212900-ene7end1
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run attack_channel_noise_nonisotropic_level_60.0
+wandb: ⭐️ View project at https://wandb.ai/aaa_2024/data-reconstruction-attack-trial-8
+wandb: 🚀 View run at https://wandb.ai/aaa_2024/data-reconstruction-attack-trial-8/runs/ene7end1
+Using 9132 (10.0%) training samples for the attack.
+Initialized dataset with 9132 files. Found and mapped 9132 activations.
+Initialized dataset with 13070 files. Found and mapped 13070 activations.
+Initialized dataset with 26180 files. Found and mapped 26180 activations.
+
+Calculating FIM for non-isotropic noise...
+Traceback (most recent call last):
+  File "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/code/dra_1/robust_attack.py", line 469, in <module>
+    main(args)
+  File "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/code/dra_1/robust_attack.py", line 172, in main
+    model_data = load_model_for_utility_check(args.experiment_path, device=device)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/code/dra_1/model_loader.py", line 335, in load_model_for_utility_check
+    return load_model_from_experiment(experiment_path, device, load_heads=True)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/code/dra_1/model_loader.py", line 207, in load_model_from_experiment
+    train_args = load_training_args(experiment_path)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/code/dra_1/model_loader.py", line 59, in load_training_args
+    raise FileNotFoundError(f"args.json not found in {experiment_path}")
+FileNotFoundError: args.json not found in /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1/rf_channel
+[1;34mwandb[0m: 
+[1;34mwandb[0m: 🚀 View run [33mattack_channel_noise_nonisotropic_level_60.0[0m at: [34mhttps://wandb.ai/aaa_2024/data-reconstruction-attack-trial-8/runs/ene7end1[0m
+[1;34mwandb[0m: Find logs at: [1;35mwandb/run-20250727_212900-ene7end1/logs[0m
