@@ -112,16 +112,25 @@ def create_encoder(train_args):
     Returns:
         torch.nn.Module: Encoder
     """
+    is_mtl = getattr(train_args, 'mtl', False)
+    fusion_type = getattr(train_args, 'fusion_type', 'sum')
+    
+    if is_mtl and fusion_type == 'concat':
+        num_tasks = len(train_args.task)
+        slice_size = train_args.proj_seq_len * num_tasks
+    else:
+        slice_size = train_args.proj_seq_len
+
     if getattr(train_args, 'task_adaptive_encoder', False):
         return TaskAdaptiveEncoder(
-            slice_size=train_args.proj_seq_len,
+            slice_size=slice_size,
             output_dim=train_args.d2,
             dropout=train_args.dropout,
             num_blocks=getattr(train_args, 'encoder_num_blocks', 3)
         )
     else:
         return Encoder(
-            slice_size=train_args.proj_seq_len,
+            slice_size=slice_size,
             output_dim=train_args.d2,
             dropout=train_args.dropout,
             num_blocks=getattr(train_args, 'encoder_num_blocks', 1)

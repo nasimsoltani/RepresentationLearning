@@ -46,17 +46,41 @@ class ActivationDataset(Dataset):
         if not self.activation_map:
             raise ValueError(f"No '.pth' activation files in {self.activation_dir} correspond to the files in file_list.")
 
+        # Check if we're dealing with fixed RF data (3 slices per sample)
+        # We'll check the first available activation file to determine the structure
+        first_activation_file = next(iter(self.activation_map.values()))
+        sample_data = torch.load(first_activation_file, map_location='cpu')
+        activation_shape = sample_data['activation'].shape
+        
+        # If activation has 3 dimensions and first dim is 3, it's from fixed RF data
+        self.is_fixed_rf = len(activation_shape) == 3 and activation_shape[0] == 3
+        
+        if self.is_fixed_rf:
+            print(f"Detected fixed RF data format: activations have shape {activation_shape}")
+            # For fixed RF, we need to expand the dataset to handle 3 slices per sample
+            self.expanded_file_list = []
+            for mat_file in self.file_list:
+                base_filename = os.path.basename(mat_file)
+                if base_filename in self.activation_map:
+                    # Add 3 entries for each file (one for each slice)
+                    for slice_idx in range(3):
+                        self.expanded_file_list.append((mat_file, slice_idx))
+        else:
+            print(f"Detected standard data format: activations have shape {activation_shape}")
+            self.expanded_file_list = [(mat_file, 0) for mat_file in self.file_list if os.path.basename(mat_file) in self.activation_map]
+
         print(f"Initialized dataset with {len(self.file_list)} files. Found and mapped {len(self.activation_map)} activations.")
+        print(f"Total samples after expansion: {len(self.expanded_file_list)}")
 
     def __len__(self):
-        return len(self.file_list)
+        return len(self.expanded_file_list)
     
     def __getitem__(self, index):
         """
         Returns a tuple containing all data for one sample:
         (rf_x, rf_y, cfo_x, cfo_y, channel_x, channel_y, activation, filename)
         """
-        mat_file_path = self.file_list[index]
+        mat_file_path, slice_idx = self.expanded_file_list[index]
         base_filename = os.path.basename(mat_file_path)
 
         # Find the corresponding .pth file from our map
@@ -81,6 +105,15 @@ class ActivationDataset(Dataset):
         channel_y = data['channel_label']
         activation = data['activation']
         original_filename = data['filename']
+        
+        # Handle fixed RF data: select the appropriate slice
+        if self.is_fixed_rf:
+            # For fixed RF, activation has shape (3, 2, 1024) - select the appropriate slice
+            if activation.shape[0] > slice_idx:
+                activation = activation[slice_idx:slice_idx+1]  # Keep as (1, 2, 1024)
+            else:
+                # Handle case where we don't have enough slices
+                activation = activation[0:1]  # Use first slice as fallback
         
         #print(f"[py_datasets.py->__getitem__] Loaded data for {original_filename}. Shapes: RF_X={rf_x.shape}, CFO_X={cfo_x.shape}, Channel_X={channel_x.shape}, activation={activation.shape}")
 

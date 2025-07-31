@@ -15,7 +15,7 @@ dotenv.load_dotenv()
 # Adjust sys.path to allow imports from the 'rep_lr' directory
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from rep_lr.py_datasets import TrainDataset,TrainDatasetRFixed
+from rep_lr.py_datasets import TrainDataset,TrainDatasetRFixed, collate_fn_rf_fixed
 from torch.utils.data import DataLoader
 from dra_1.model_loader import load_model_for_extraction
 
@@ -96,12 +96,11 @@ def extract_activations(cli_args):
     if getattr(train_args, 'rf_fixed', False):
         print("Using RF fixed dataset")
         dataset = TrainDatasetRFixed(data_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, rf_begin_idx=getattr(train_args, 'rf_begin_idx', 0), test_mode=False)
+        data_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=4, pin_memory=True, collate_fn=collate_fn_rf_fixed)
     else:
         print("Using RF variable dataset")
         dataset = TrainDataset(data_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, test_mode=False)
-
-    #dataset = TrainDataset(data_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, test_mode=False)
-    data_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
+        data_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
 
     print("Starting activation extraction.")
 
@@ -138,9 +137,13 @@ def extract_activations(cli_args):
                     else:
                         proj = model['projections'][task_name](inputs)
                         projected_tensors.append(proj)
-                #import pdb; pdb.set_trace()
-                projected_sum = torch.sum(torch.stack(projected_tensors), dim=0)
-                encoded_activation = model['encoder'](projected_sum)
+                
+                if getattr(train_args, 'fusion_type', 'sum') == 'concat':
+                    projected_input = torch.cat(projected_tensors, dim=2)
+                else:
+                    projected_input = torch.sum(torch.stack(projected_tensors), dim=0)
+
+                encoded_activation = model['encoder'](projected_input)
 
             else:
                 # Single-task model: use projection and encoder directly

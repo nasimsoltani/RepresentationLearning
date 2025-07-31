@@ -3,6 +3,7 @@ import ray
 import subprocess
 import time
 import dotenv
+import json
 
 dotenv.load_dotenv()
 
@@ -10,6 +11,37 @@ dotenv.load_dotenv()
 env_vars_from_dotenv = dotenv.dotenv_values()
 # Ray's runtime_env expects string values, so filter out any Nones
 safe_env_vars = {k: v for k, v in env_vars_from_dotenv.items() if v is not None}
+
+
+def calculate_latent_dim(experiment_path):
+    """
+    Dynamically calculate the latent dimension based on the model architecture.
+    Reads args.json from the experiment path to determine the encoder output dimension.
+    """
+    args_path = os.path.join(experiment_path, 'args.json')
+    if not os.path.exists(args_path):
+        print(f"Warning: args.json not found at {args_path}, using default latent_dim=512")
+        return 512
+    
+    with open(args_path, 'r') as f:
+        args = json.load(f)
+    
+    # For single-task models, the encoder output dimension is 2 * d2
+    # For MTL models with concat fusion, it might be different
+    d2 = args.get('d2', 128)
+    is_mtl = args.get('mtl', False)
+    fusion_type = args.get('fusion_type', 'sum')
+    
+    if is_mtl and fusion_type == 'concat':
+        # For MTL with concat, the encoder input dimension is proj_seq_len * num_tasks
+        # But the output dimension is still 2 * d2
+        latent_dim = 2 * d2
+    else:
+        # For single-task models or MTL with sum fusion
+        latent_dim = 2 * d2
+    
+    print(f"Calculated latent_dim={latent_dim} from args: d2={d2}, mtl={is_mtl}, fusion_type={fusion_type}")
+    return latent_dim
 
 
 @ray.remote(num_gpus=0.04) 
@@ -33,13 +65,13 @@ def run_command(command: str, task_type: str):
 remote_activation = True #STrue
 
 
-results_path =  "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1"
+results_path =  "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250730_220537"
 #results_path =  "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
 activations_base =  os.getenv("ACTIVATIONS_BASE")# "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
 extract_activation_script = os.getenv("EXTRACT_ACTIVATION_SCRIPT")# "/home/hofmann/Documents/projects/RepresentationLearning/code/dra_1/extract_activations.py"
 attack_script = os.getenv("ATTACK_SCRIPT")# "/home/hofmann/Documents/projects/RepresentationLearning/code/dra_1/robust_attack.py"
 is_uv=os.getenv("IS_UV")
-ray_tmp_dir = os.getenv("RAY_TMP_DIR")# "/home/hofmann/Documents/ray_temp"
+ray_tmp_dir = os.getenv("RAY_TMP_DIR")# "/home/hofmann/Documents/projects/RepresentationLearning/ray_temp"
 
 print(os.environ.get("RAY_HEAD_ADDRESS"))
 
@@ -68,15 +100,19 @@ tasks = os.listdir(results_path)
 #     parser.add_argument('--patience', type=int, default=5, help="Patience for early stopping.")
 
 #     # Model parameters
-#     parser.add_argument('--latent_dim', type=int, default=512, help="Dimension of the latent space.")
+#     parser.add_argument('--latent_dim', type=int, default=1536, help="Dimension of the latent space.")
     
 
 
 
 def generate_attack_command(experiment_path, activations_path, task, output_dir, noise_type="none",
                              noise_level=0.0, fim_samples=8000, leaked_fraction=1.0, epochs=40,
-                               lr=1e-3, batch_size=128, patience=30, latent_dim=512,
+                               lr=1e-3, batch_size=128, patience=30, latent_dim=None,
                                optimizer='adamw', clip_grad_norm=1.0, lambda_factor=1e-5):
+    # Calculate latent_dim dynamically if not provided
+    if latent_dim is None:
+        latent_dim = calculate_latent_dim(experiment_path)
+    
     cmd= (f"python {attack_script} --experiment_path {experiment_path} "
           f"--activations_path {activations_path} --task {task} "
           f"--output_dir {output_dir} "
@@ -121,9 +157,29 @@ def main():
 
         activations_path = os.path.join(activations_base, )
         task_path = os.path.join(results_path, "_".join(task))
-        task_base_path = os.listdir(task_path)[0]
         
-        full_task_base_path = os.path.join(task_path, task_base_path)
+        # Find the first directory in task_path, not just any file
+        task_base_path = None
+        for item in os.listdir(task_path):
+            item_path = os.path.join(task_path, item)
+            if os.path.isdir(item_path):
+                task_base_path = item
+                break
+        
+        if task_base_path is None:
+            print(f"Warning: No directory found in {task_path}, using task_path as base")
+            full_task_base_path = task_path
+        else:
+            full_task_base_path = os.path.join(task_path, task_base_path)
+        
+        print(f"Debug: full_task_base_path = {full_task_base_path}")
+        print(f"Debug: full_task_base_path exists: {os.path.exists(full_task_base_path)}")
+        print(f"Debug: full_task_base_path isdir: {os.path.isdir(full_task_base_path)}")
+        if os.path.exists(full_task_base_path) and not os.path.isdir(full_task_base_path):
+            print(f"Warning: {full_task_base_path} exists but is not a directory!")
+            # If it's a file, use the parent directory
+            full_task_base_path = os.path.dirname(full_task_base_path)
+            print(f"Using parent directory: {full_task_base_path}")
 
         if remote_activation:
             results_name = results_path.split("/")[-1]
@@ -133,15 +189,29 @@ def main():
 
         log_dir = os.path.join(full_task_base_path, "attack_logs")
 
+        # Create log directory if it doesn't exist
         if not os.path.exists(log_dir):
+            print(f"Creating log directory: {log_dir}")
             os.makedirs(log_dir)
+        elif os.path.isdir(log_dir):
+            print(f"Log directory already exists: {log_dir}")
+        else:
+            print(f"Warning: {log_dir} exists but is not a directory")
+            # Remove the file and create directory
+            os.remove(log_dir)
+            os.makedirs(log_dir)
+            
 
         if not os.path.exists(activations_path):
             print(f"Activations path {activations_path} does not exist")
-            os.makedirs(activations_path)
-
-        else:
+            os.makedirs(activations_path, exist_ok=True)
+        elif os.path.isdir(activations_path):
             print(f"Activations path {activations_path} exists")
+        else:
+            print(f"Warning: {activations_path} exists but is not a directory")
+            # Remove the file and create directory
+            os.remove(activations_path)
+            os.makedirs(activations_path, exist_ok=True)
 
         
         

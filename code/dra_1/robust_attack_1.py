@@ -126,7 +126,7 @@ def main(args):
     if args.noise_type == 'nonisotropic':
         wandb_name += f"_lambda_{args.lambda_factor}"
     wandb.init(
-        project="data-reconstruction-attack-run-1-no-trace-1",
+        project="data-reconstruction-attack-run-1-concat-rf-fxed",
         config=wandb_config,
         name=wandb_name
     )
@@ -208,12 +208,12 @@ def main(args):
             fim = get_empirical_fim(head, fim_loader, device, args.latent_dim)
 
         # Normalize the FIM to prevent issues with very small eigenvalues
-        # trace_fim = torch.trace(fim)
-        # if trace_fim > 1e-10:
-        #     fim = fim / trace_fim
-        #     print(f"  Final FIM normalized by its trace: {trace_fim:.3e}")
-        # else:
-        #     print("  Warning: Final FIM has a zero or near-zero trace. Skipping normalization.")
+        trace_fim = torch.trace(fim)
+        if trace_fim > 1e-10:
+            fim = fim / trace_fim
+            print(f"  Final FIM normalized by its trace: {trace_fim:.3e}")
+        else:
+            print("  Warning: Final FIM has a zero or near-zero trace. Skipping normalization.")
 
         print("Performing eigendecomposition of the final FIM...")
         L_e, V = torch.linalg.eigh(fim)

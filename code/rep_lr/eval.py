@@ -30,7 +30,7 @@ def evaluate_rf_fingerprinting(model, test_dl, device, output_dir, class_names, 
             labels = labels.to(device)
 
             # Pre-calculate projections from other tasks for MTL
-            projected_others = 0
+            projected_others = []
             if is_mtl:
                 task_data_map = {
                     'cfo_estimation': cfo_inputs_raw,
@@ -39,7 +39,7 @@ def evaluate_rf_fingerprinting(model, test_dl, device, output_dir, class_names, 
                 for task_name in args.task:
                     if task_name != 'rf_fingerprinting':
                         other_inputs = task_data_map[task_name].to(device).float()
-                        projected_others += model['projections'][task_name](other_inputs)
+                        projected_others.append(model['projections'][task_name](other_inputs))
 
             # Process slices in mini-batches to avoid OOM
             rf_inputs_all_slices = inputs.squeeze(0).to(device)
@@ -50,8 +50,18 @@ def evaluate_rf_fingerprinting(model, test_dl, device, output_dir, class_names, 
 
                 if is_mtl:
                     projected_rf = model['projections']['rf_fingerprinting'](input_slices)
-                    projected_sum = projected_rf + projected_others  # Broadcast
-                    encoded = model['encoder'](projected_sum)
+                    
+                    if getattr(args, 'fusion_type', 'sum') == 'concat':
+                        print("Concatenating projections")
+                        # Repeat other projections to match the batch size of rf slices
+                        repeated_others = [p.repeat(projected_rf.shape[0], 1, 1) for p in projected_others]
+                        projected_input = torch.cat([projected_rf] + repeated_others, dim=2)
+                    else:
+                        print("Summing projections")
+                        projected_sum_others = torch.sum(torch.stack(projected_others), dim=0) if projected_others else 0
+                        projected_input = projected_rf + projected_sum_others  # Broadcast
+
+                    encoded = model['encoder'](projected_input)
                     output = model['heads']['rf_fingerprinting'](encoded)
                 else:
                     x = model['projection'](input_slices)
@@ -361,7 +371,7 @@ def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, mean_cf
 
             if is_mtl:
                 # Average RF projections and sum with others
-                projected_sum = 0
+                projected_tensors = []
                 task_data_map = {
                     'rf_fingerprinting': rf_inputs_raw,
                     'cfo_estimation': inputs,
@@ -372,17 +382,24 @@ def evaluate_cfo_estimation(model, test_dl, device, output_dir, max_cfo, mean_cf
                     if task_name == 'rf_fingerprinting':
                         # Average projections across all slices for a single representation
                         proj = model['projections'][task_name](task_inputs.squeeze(0))
-                        projected_sum += proj.mean(dim=0, keepdim=True)
+                        projected_tensors.append(proj.mean(dim=0, keepdim=True))
                     else:
-                        projected_sum += model['projections'][task_name](task_inputs)
+                        projected_tensors.append(model['projections'][task_name](task_inputs))
                 
+                if getattr(args, 'fusion_type', 'sum') == 'concat':
+                    print("Concatenating projections")
+                    projected_input = torch.cat(projected_tensors, dim=2)
+                else:
+                    print("Summing projections")
+                    projected_input = torch.sum(torch.stack(projected_tensors), dim=0)
+
                 # For MTL, direct CFO is not typically used, but handle it just in case
                 if getattr(args, 'direct_cfo', False):
                     # Extract just the CFO projection for direct processing
                     cfo_projection = model['projections']['cfo_estimation'](inputs)
                     outputs = model['heads']['cfo_estimation'](cfo_projection)
                 else:
-                    encoded = model['encoder'](projected_sum)
+                    encoded = model['encoder'](projected_input)
                     outputs = model['heads']['cfo_estimation'](encoded)
             else:
                 x = model['projection'](inputs)
@@ -492,7 +509,7 @@ def evaluate_channel_estimation(model, test_dl, device, output_dir, args):
 
             if is_mtl:
                 # Average RF projections and sum with others
-                projected_sum = 0
+                projected_tensors = []
                 task_data_map = {
                     'rf_fingerprinting': rf_inputs_raw,
                     'cfo_estimation': cfo_inputs_raw,
@@ -502,11 +519,18 @@ def evaluate_channel_estimation(model, test_dl, device, output_dir, args):
                     task_inputs = task_data_map[task_name].to(device).float()
                     if task_name == 'rf_fingerprinting':
                         proj = model['projections'][task_name](task_inputs.squeeze(0))
-                        projected_sum += proj.mean(dim=0, keepdim=True)
+                        projected_tensors.append(proj.mean(dim=0, keepdim=True))
                     else:
-                        projected_sum += model['projections'][task_name](task_inputs)
+                        projected_tensors.append(model['projections'][task_name](task_inputs))
 
-                encoded = model['encoder'](projected_sum)
+                if getattr(args, 'fusion_type', 'sum') == 'concat':
+                    print("Concatenating projections")
+                    projected_input = torch.cat(projected_tensors, dim=2)
+                else:
+                    print("Summing projections")
+                    projected_input = torch.sum(torch.stack(projected_tensors), dim=0)
+
+                encoded = model['encoder'](projected_input)
                 outputs = model['heads']['channel_estimation'](encoded)
             else:
                 x = model['projection'](inputs)
@@ -704,8 +728,10 @@ def main():
     num_classes = len(list(ID_class_dict.keys()))
 
     if getattr(train_args, 'rf_fixed', False):
+        print("Using fixed RF dataset")
         test_dataset = TrainDatasetRFixed(test_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, rf_begin_idx=getattr(train_args, 'rf_begin_idx', 0), test_mode=True)
     else:
+        print("Using variable RF dataset")
         test_dataset = TrainDataset(test_list, ID_class_dict, train_args, max_cfo, mean_cfo, std_cfo, test_mode=True)
 
     # Use batch_size=1 for test loader because of variable number of slices
@@ -748,9 +774,11 @@ def main():
         # Choose encoder based on training arguments (MTL)
         if getattr(train_args, 'task_adaptive_encoder', False):
             print("Using task-adaptive encoder.")
-            encoder = TaskAdaptiveEncoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout, num_blocks=encoder_num_blocks)
+            encoder_input_dim = train_args.proj_seq_len * len(train_args.task) if getattr(train_args, 'fusion_type', 'sum') == 'concat' else train_args.proj_seq_len
+            encoder = TaskAdaptiveEncoder(slice_size=encoder_input_dim, output_dim=train_args.d2, dropout=train_args.dropout, num_blocks=encoder_num_blocks)
         else:
-            encoder = Encoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout, num_blocks=encoder_num_blocks)
+            encoder_input_dim = train_args.proj_seq_len * len(train_args.task) if getattr(train_args, 'fusion_type', 'sum') == 'concat' else train_args.proj_seq_len
+            encoder = Encoder(slice_size=encoder_input_dim, output_dim=train_args.d2, dropout=train_args.dropout, num_blocks=encoder_num_blocks)
         
         model = torch.nn.ModuleDict({
             'projections': projections,

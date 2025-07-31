@@ -198,9 +198,9 @@ def main():
             latent_dim = head.input_dim
             fim = get_empirical_fim(head, fim_dl, device, latent_dim)
             
-            # trace_fim = torch.trace(fim)
-            # if trace_fim > 1e-10:
-            #     fim = fim / trace_fim
+            trace_fim = torch.trace(fim)
+            if trace_fim > 1e-10:
+                fim = fim / trace_fim
             
             L_e, V = torch.linalg.eigh(fim)
             L = torch.relu(L_e)

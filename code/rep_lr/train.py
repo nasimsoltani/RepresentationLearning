@@ -66,10 +66,13 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                         inputs = batch[data_idx].to(device, non_blocking=True).float()
                         projected_tensors.append(model['projections'][task](inputs))
                     
-                    projected_sum = torch.sum(torch.stack(projected_tensors), dim=0)
+                    if getattr(args, 'fusion_type', 'sum') == 'concat':
+                        projected_input = torch.cat(projected_tensors, dim=2)
+                    else:
+                        projected_input = torch.sum(torch.stack(projected_tensors), dim=0)
                     
                     # Shared Encoder
-                    encoded = model['encoder'](projected_sum)
+                    encoded = model['encoder'](projected_input)
                     
                     # Task Heads and Loss Calculation
                     total_loss = 0
@@ -224,10 +227,13 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                             inputs = batch[data_idx].to(device, non_blocking=True).float()
                             projected_tensors.append(model['projections'][task](inputs))
 
-                        projected_sum = torch.sum(torch.stack(projected_tensors), dim=0)
+                        if getattr(args, 'fusion_type', 'sum') == 'concat':
+                            projected_input = torch.cat(projected_tensors, dim=2)
+                        else:
+                            projected_input = torch.sum(torch.stack(projected_tensors), dim=0)
                         
                         # Shared Encoder
-                        encoded = model['encoder'](projected_sum)
+                        encoded = model['encoder'](projected_input)
                         
                         # Task Heads and Loss
                         for task in args.task:

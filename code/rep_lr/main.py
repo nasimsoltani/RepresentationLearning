@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 import torch.optim
 from torch.utils.data import Dataset, DataLoader, random_split
-from py_datasets import TrainDataset, TrainDatasetRFixed
+from py_datasets import TrainDataset, TrainDatasetRFixed, collate_fn_rf_fixed
 from models import (ComplexSequenceProjector, UpsamplingProjector, Encoder, 
                    RFClassificationHead, ChannelEstimationHead, CFOEstimationHead, SimpleCFOEstimationHead, DirectCFOEstimationHead,
                    CFOAdaptiveHead, TaskAdaptiveEncoder)
@@ -37,7 +37,7 @@ def main():
     
     # Training hyperparameters
     parser.add_argument('--epochs', type=int, default=300, help='Number of training epochs.')
-    parser.add_argument('--batch_size', type=int, default=256, help='Batch size.')
+    parser.add_argument('--batch_size', type=int, default=1024, help='Batch size.')
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate.')
     parser.add_argument('--slice_len', type=int, default=1024, help='NN input size. 1024 for RF, 160 for CFO/Channel.')
 
@@ -69,6 +69,7 @@ def main():
     
     # MTL arguments
     parser.add_argument('--mtl', action='store_true', help='Enable Multi-Task Learning.')
+    parser.add_argument('--fusion_type', type=str, default='sum', choices=['sum', 'concat'], help='Fusion type for MTL projections.')
     parser.add_argument('--w_rf', type=float, default=1.0, help='Weight for RF fingerprinting loss.')
     parser.add_argument('--w_channel', type=float, default=1.0, help='Weight for channel estimation loss.')
     parser.add_argument('--w_cfo', type=float, default=1.0, help='Weight for CFO estimation loss.')
@@ -133,13 +134,15 @@ def main():
         print("Using RF fixed dataset")
         train_dataset = TrainDatasetRFixed(train_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo, rf_begin_idx=getattr(args, 'rf_begin_idx', 0))
         val_dataset = TrainDatasetRFixed(val_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo, rf_begin_idx=getattr(args, 'rf_begin_idx', 0))
+        train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=32, pin_memory=True, collate_fn=collate_fn_rf_fixed)
+        val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=32, pin_memory=True, collate_fn=collate_fn_rf_fixed)
     else:
         print("Using RF variable dataset Random slices")
         train_dataset = TrainDataset(train_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo)
         val_dataset = TrainDataset(val_list, ID_class_dict, dataset_args, max_cfo, mean_cfo, std_cfo)
+        train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
+        val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, pin_memory=True)
 
-    train_dl = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
-    val_dl = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, pin_memory=True)
 
     # Create model, loss function, and optimizer
     model = None
@@ -192,10 +195,12 @@ def main():
         # Choose encoder based on arguments (MTL)
         if args.task_adaptive_encoder:
             print(f"Using TaskAdaptiveEncoder with {args.encoder_num_blocks} blocks")
-            encoder = TaskAdaptiveEncoder(slice_size=args.proj_seq_len, output_dim=args.d2, dropout=args.dropout, num_blocks=args.encoder_num_blocks)
+            encoder_input_dim = args.proj_seq_len * len(args.task) if getattr(args, 'fusion_type', 'sum') == 'concat' else args.proj_seq_len
+            encoder = TaskAdaptiveEncoder(slice_size=encoder_input_dim, output_dim=args.d2, dropout=args.dropout, num_blocks=args.encoder_num_blocks)
         else:
             print(f"Using standard Encoder with {args.encoder_num_blocks} blocks")
-            encoder = Encoder(slice_size=args.proj_seq_len, output_dim=args.d2, dropout=args.dropout, num_blocks=args.encoder_num_blocks)
+            encoder_input_dim = args.proj_seq_len * len(args.task) if getattr(args, 'fusion_type', 'sum') == 'concat' else args.proj_seq_len
+            encoder = Encoder(slice_size=encoder_input_dim, output_dim=args.d2, dropout=args.dropout, num_blocks=args.encoder_num_blocks)
         
         model = nn.ModuleDict({
             'projections': projections,
@@ -307,6 +312,8 @@ def main():
     # Move model to device
     model.to(device)
     
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+
     # Load from checkpoint if provided
     if args.resume_from:
         if os.path.isfile(args.resume_from):
@@ -323,13 +330,13 @@ def main():
             # Restore optimizer and scheduler states
             if 'optimizer_state_dict' in checkpoint:
                 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            if 'scheduler_state_dict' in checkpoint:
-                scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+            # Note: scheduler is initialized in train_model, so we can't load its state here.
+            # This is a limitation of the current structure.
+            # if 'scheduler_state_dict' in checkpoint:
+            #     scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
             print("Checkpoint loaded.")
         else:
             print(f"Checkpoint not found at '{args.resume_from}'. Training from scratch.")
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     
     # Start training
     train_model(model, train_dl, val_dl, loss_fn, optimizer, args)
@@ -418,5 +425,4 @@ if __name__ == '__main__':
 
 
 
- 
 
