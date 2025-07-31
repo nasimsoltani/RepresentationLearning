@@ -26,7 +26,8 @@ def organize_results(source_dir):
         "*_metrics.json",
         "*_predictions.json",
         "prediction.json",
-        "*_report.json"
+        "*_report.json",
+        "args.json"
     ]
     
     # Get all task directories (immediate subdirectories of source_dir)

@@ -4,7 +4,7 @@
 #SBATCH -p gh          # Queue (partition) name
 #SBATCH -N 1               # Total # of nodes
 #SBATCH -n 4               # Total # of mpi tasks
-#SBATCH -t 24:00:00        # Run time (hh:mm:ss)
+#SBATCH -t 1:00:00        # Run time (hh:mm:ss)
 #SBATCH -A DBS24008       # Allocation name (req'd if you have more than 1)
 
 # Other commands must follow all #SBATCH directives...
@@ -18,4 +18,6 @@ conda init
 conda activate vllm
 
 
-python -u /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/run_utility_exps.py 
+#python -u /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/run_utility_exps.py 
+
+python -u /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/run_utility_exps_lambda.py

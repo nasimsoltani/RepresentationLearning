@@ -41,8 +41,10 @@ attack_script = os.getenv("ATTACK_SCRIPT")# "/home/hofmann/Documents/projects/Re
 is_uv=os.getenv("IS_UV")
 ray_tmp_dir = os.getenv("RAY_TMP_DIR")# "/home/hofmann/Documents/ray_temp"
 
-if not os.path.exists(ray_tmp_dir):
-    os.makedirs(ray_tmp_dir)
+print(os.environ.get("RAY_HEAD_ADDRESS"))
+
+# if not os.path.exists(ray_tmp_dir):
+#     os.makedirs(ray_tmp_dir)
 
 
 tasks = os.listdir(results_path)
@@ -162,8 +164,7 @@ def main():
         noise_types = ["none","isotropic",'nonisotropic']
         
         leaked_fractions = [0.1,0.5,1.0]
-        lambda_factors = [1e-1,1e-2, 1e-3,1e-4] # Add your desired sweep values here
-
+        lambda_factors = [1e-1,1e-2, 1e-3,1e-4] 
 
         for noise_type in noise_types:
             if noise_type == "none":
@@ -237,16 +238,28 @@ def main():
 
         
 
+    ray_head_address = os.environ.get("RAY_HEAD_ADDRESS")
+    if ray_head_address:
+        print(f"Connecting to existing Ray cluster at: {ray_head_address}")
+        ray.init(
+            address=ray_head_address,
+           # _temp_dir=ray_tmp_dir,
+            runtime_env={
+                "conda": "vllm",
+                "env_vars": safe_env_vars,
+            }
+        )
+    else:
+        print("RAY_HEAD_ADDRESS not found, initializing Ray locally.")
+        ray.init(
+            #_temp_dir=ray_tmp_dir,
+            runtime_env={
+                "conda": "vllm",
+                "env_vars": safe_env_vars,
+            }
+        )
 
 
-    ray.init(
-        _temp_dir=ray_tmp_dir,
-        runtime_env={
-            "conda": "vllm",
-            # "py_executable": "/home/hofmann/Documents/projects/RepresentationLearning/.venv/bin/python3",
-            "env_vars": safe_env_vars,
-        }
-    )
     print(f"Ray cluster started. Available resources: {ray.available_resources()}")
 
     # --- PHASE 1: Run Activations ---
