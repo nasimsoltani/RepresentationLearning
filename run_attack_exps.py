@@ -65,7 +65,7 @@ def run_command(command: str, task_type: str):
 remote_activation = True #STrue
 
 
-results_path =  "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250730_220537"
+results_path =  "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1"
 #results_path =  "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
 activations_base =  os.getenv("ACTIVATIONS_BASE")# "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
 extract_activation_script = os.getenv("EXTRACT_ACTIVATION_SCRIPT")# "/home/hofmann/Documents/projects/RepresentationLearning/code/dra_1/extract_activations.py"
@@ -141,12 +141,21 @@ def main():
     attack_commands = []
     experiment_tasks = []
 
-    for task in tasks:
-        possible_tasks = ["rf","cfo", "channel"] #removing rf for now, as it is not working, will save time
-        maybe_tasks = task.split("_")
+    tasks = os.listdir(results_path)
 
-        if maybe_tasks[0] in possible_tasks:
-            experiment_tasks.append(maybe_tasks)
+    tasks = [task for task in tasks if os.path.isdir(os.path.join(results_path, task))]
+
+    
+
+    for task in tasks:
+        possible_tasks = ["rf"]  # Add all tasks you want to attack
+        maybe_tasks = task.split("_")
+        
+        # Check if any of the possible tasks appear in this directory name
+        matching_tasks = [t for t in maybe_tasks if t in possible_tasks]
+        
+        if matching_tasks:
+            experiment_tasks.append(matching_tasks)
 
 
 
@@ -155,7 +164,7 @@ def main():
         #skip loop if len of task grater than 1
         
 
-        activations_path = os.path.join(activations_base, )
+        # This line was incomplete, removing it as it's not needed here
         task_path = os.path.join(results_path, "_".join(task))
         
         # Find the first directory in task_path, not just any file
@@ -245,8 +254,12 @@ def main():
             for noise_level in noise_levels:
                 for leaked_fraction in leaked_fractions:
                     for t in task:
-                        #do not attack rf for now
-                        if t == "rf":
+                        # #do not attack rf for now
+                        # if t == "rf":
+                        #     continue
+
+                        #do not attack cfo and channel for now
+                        if t == "cfo" or t == "channel":
                             continue
                         
                         # Construct the results directory path
@@ -292,7 +305,8 @@ def main():
                                                                     noise_level=noise_level,
                                                                     leaked_fraction=leaked_fraction,
                                                                     optimizer='adamw',
-                                                                    clip_grad_norm=1.0)
+                                                                    clip_grad_norm=1.0,
+                                                                    lambda_factor=0.0)
                             
                             # Ensure the directory exists
                             os.makedirs(results_dir, exist_ok=True)

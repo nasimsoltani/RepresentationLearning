@@ -2,9 +2,9 @@
 #SBATCH -J rep_lr_attack           # Job name
 #SBATCH -o rep_lr_attack.o%j       # Name of stdout output file
 #SBATCH -p gh          # Queue (partition) name
-#SBATCH -N 8               # Total # of nodes
-#SBATCH -n 12               # Total # of mpi tasks
-#SBATCH -t 2:00:00        # Run time (hh:mm:ss)
+#SBATCH -N 4              # Total # of nodes
+#SBATCH -n 4               # Total # of mpi tasks
+#SBATCH -t 6:00:00        # Run time (hh:mm:ss)
 #SBATCH -A DBS24008       # Allocation name (req'd if you have more than 1)
 
 # Other commands must follow all #SBATCH directives...

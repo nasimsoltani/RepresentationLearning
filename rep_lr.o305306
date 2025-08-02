@@ -32,7 +32,10 @@ no change     /scratch/10608/aadharsh_aadhithya/miniconda/lib/python3.13/site-pa
 no change     /scratch/10608/aadharsh_aadhithya/miniconda/etc/profile.d/conda.csh
 no change     /home1/10608/aadharsh_aadhithya/.bashrc
 No action taken.
-Loading environment variables from .env file
-No Run ID provided. Results will be saved in: results_20250730_213133
---- Starting Single-Task: RF Fingerprinting ---
-slurmstepd: error: *** JOB 304592 ON c608-061 CANCELLED AT 2025-07-30T21:31:35 ***
+2025-07-31 18:32:08,279	INFO worker.py:1723 -- Connecting to existing Ray cluster at address: 129.114.18.96:6379...
+[2025-07-31 18:32:13,374 W 1213558 1213558] gcs_rpc_client.h:151: Failed to connect to GCS at address 129.114.18.96:6379 within 5 seconds.
+[2025-07-31 18:32:43,396 W 1213558 1213558] gcs_client.cc:183: Failed to get cluster ID from GCS server: TimedOut: Timed out while waiting for GCS to become available.
+[2025-07-31 18:32:49,412 W 1213558 1213558] gcs_rpc_client.h:151: Failed to connect to GCS at address 129.114.18.96:6379 within 5 seconds.
+[2025-07-31 18:33:19,414 W 1213558 1213558] gcs_client.cc:183: Failed to get cluster ID from GCS server: TimedOut: Timed out while waiting for GCS to become available.
+[2025-07-31 18:33:25,419 W 1213558 1213558] gcs_rpc_client.h:151: Failed to connect to GCS at address 129.114.18.96:6379 within 5 seconds.
+slurmstepd: error: *** JOB 305306 ON c613-012 CANCELLED AT 2025-07-31T18:33:42 ***

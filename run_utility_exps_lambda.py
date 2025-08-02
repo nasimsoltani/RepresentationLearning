@@ -17,7 +17,7 @@ safe_env_vars = {k: v for k, v in env_vars_from_dotenv.items() if v is not None}
 
 # Define noise levels and lambda factors (same as in run_attack_exps.py)
 NOISE_LEVELS = [5, 10, 15, 20]
-LAMBDA_FACTORS = [1e-1, 1e-2, 1e-3, 1e-4]
+LAMBDA_FACTORS = [0.01]
 NOISE_TYPES = ["none", "isotropic", "nonisotropic"]
 
 # Mapping for encoder_train_task
@@ -46,7 +46,7 @@ def run_command(command: str, task_type: str):
 
 # --- Configuration ---
 # You can set these paths in your .env file or modify them here.
-results_path = "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1"
+results_path = "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250730_220537_7"
 activations_base = os.getenv("ACTIVATIONS_BASE", "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/activations")
 utility_script = "code/dra_1/plot_utility_lambda.py"
 #ray_tmp_dir = os.getenv("RAY_TMP_DIR")
@@ -186,9 +186,21 @@ def main():
             
         # Find the timestamped experiment folder inside
         try:
-            experiment_folder = os.listdir(task_path)[0]
+            #there might be files also so we need to check if it is a directory
+            experiment_folder = None 
+            for folder in os.listdir(task_path):
+                if os.path.isdir(os.path.join(task_path, folder)):
+                    experiment_folder = folder
+                    break
+            
+            if experiment_folder is None:
+                print(f"Cannot find experiment fodler. Skipping empty directory: {task_path}")
+                continue
+                
             full_experiment_path = os.path.join(task_path, experiment_folder)
-        except IndexError:
+
+            
+        except StopIteration:
             print(f"Skipping empty directory: {task_path}")
             continue
 
@@ -315,8 +327,19 @@ def main():
             continue
             
         try:
-            experiment_folder = os.listdir(task_path)[0]
+            experiment_folder = None 
+            for folder in os.listdir(task_path):
+                if os.path.isdir(os.path.join(task_path, folder)):
+                    experiment_folder = folder
+                    break
+            
+            if experiment_folder is None:
+                print(f"Cannot find experiment fodler. Skipping empty directory: {task_path}")
+                continue
+                
             full_experiment_path = os.path.join(task_path, experiment_folder)
+            # experiment_folder = os.listdir(task_path)[0]
+            # full_experiment_path = os.path.join(task_path, experiment_folder)
         except IndexError:
             continue
 

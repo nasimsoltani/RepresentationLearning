@@ -32,4 +32,4 @@ no change     /scratch/10608/aadharsh_aadhithya/miniconda/lib/python3.13/site-pa
 no change     /scratch/10608/aadharsh_aadhithya/miniconda/etc/profile.d/conda.csh
 no change     /home1/10608/aadharsh_aadhithya/.bashrc
 No action taken.
-/var/spool/slurmd/job304604/slurm_script: line 24: /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/scripts/experiments_parallel.sh: Permission denied
+/var/spool/slurmd/job305302/slurm_script: line 26: /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/run_specific_attacks.py: Permission denied

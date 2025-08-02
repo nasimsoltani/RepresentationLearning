@@ -126,7 +126,7 @@ def main(args):
     if args.noise_type == 'nonisotropic':
         wandb_name += f"_lambda_{args.lambda_factor}"
     wandb.init(
-        project="data-reconstruction-attack-run-1-concat-rf-fxed",
+        project="data-reconstruction-attack-run-1-rf-attacks",
         config=wandb_config,
         name=wandb_name
     )

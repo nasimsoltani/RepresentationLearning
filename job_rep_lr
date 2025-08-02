@@ -21,4 +21,6 @@ conda activate vllm
 #/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/scripts/experiments.sh
 
 #for parallel
-/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/scripts/experiments_parallel.sh
+#/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/scripts/experiments_parallel.sh
+#temp script
+python /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/run_specific_attacks.py

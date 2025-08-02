@@ -109,79 +109,176 @@ def extract_activations(cli_args):
             rf_inputs, rf_labels, cfo_inputs, cfo_labels, channel_inputs, channel_labels, file_paths = batch
             
             filename = os.path.basename(file_paths[0])
-            save_path = os.path.join(output_dir, filename.replace('.mat', '.pth'))
-
-            if os.path.exists(save_path) and not cli_args.overwrite:
-                continue
-
-            # This tensor will hold the RF data that gets saved.
-            rf_inputs_to_save = rf_inputs.detach().cpu() #Bx2x1024
-            #print(rf_inputs_to_save.shape)
-
-            if is_mtl:
-                # MTL model: use projections dict and sum projections
-                projected_tensors = []
-                task_data_map = {
-                    'rf_fingerprinting': rf_inputs,
-                    'cfo_estimation': cfo_inputs,
-                    'channel_estimation': channel_inputs
-                }
-
-                for task_name in train_args.task:
-                    inputs = task_data_map[task_name].to(device).float()
-                    if task_name == 'rf_fingerprinting':
-                       # print(f"RF inputs shape: {inputs.shape}")
-                        # MTL eval logic for RF averages projections across slices
-                        proj = model['projections'][task_name](inputs)
-                        projected_tensors.append(proj)
+            
+            # Check if we're using RF Fixed dataset with multiple slices
+            is_rf_fixed = getattr(train_args, 'rf_fixed', False)
+            
+            if is_rf_fixed and rf_inputs.shape[0] > 1:
+                # Handle RF Fixed dataset with multiple slices - save each slice separately
+                num_slices = rf_inputs.shape[0]
+                
+                for slice_idx in range(num_slices):
+                    slice_filename = filename.replace('.mat', f'_slice{slice_idx}.pth')
+                    save_path = os.path.join(output_dir, slice_filename)
+                    
+                    if os.path.exists(save_path) and not cli_args.overwrite:
+                        continue
+                    
+                    # Extract data for this slice
+                    rf_slice = rf_inputs[slice_idx:slice_idx+1]  # Keep batch dimension
+                    
+                    # For RF Fixed datasets, CFO and Channel data are replicated across slices
+                    # so we just take the first instance (they're all identical)
+                    if rf_labels.numel() > 1:
+                        rf_label_slice = rf_labels[slice_idx:slice_idx+1]
                     else:
+                        rf_label_slice = rf_labels
+                    
+                    # CFO and Channel data are replicated, so take the first instance
+                    cfo_slice = cfo_inputs[:1]  # Always take first instance
+                    cfo_label_slice = cfo_labels[:1] if cfo_labels.numel() > 1 else cfo_labels
+                    channel_slice = channel_inputs[:1]  # Always take first instance  
+                    channel_label_slice = channel_labels[:1] if channel_labels.dim() > 0 and channel_labels.shape[0] > 1 else channel_labels
+                    
+                    # Process this slice through the model
+                    if is_mtl:
+                        # MTL model: use projections dict and sum projections
+                        projected_tensors = []
+                        task_data_map = {
+                            'rf_fingerprinting': rf_slice,
+                            'cfo_estimation': cfo_slice,
+                            'channel_estimation': channel_slice
+                        }
+
+                        for task_name in train_args.task:
+                            inputs = task_data_map[task_name].to(device).float()
+                            proj = model['projections'][task_name](inputs)
+                            projected_tensors.append(proj)
+                        
+                        if getattr(train_args, 'fusion_type', 'sum') == 'concat':
+                            projected_input = torch.cat(projected_tensors, dim=2)
+                        else:
+                            projected_input = torch.sum(torch.stack(projected_tensors), dim=0)
+
+                        encoded_activation = model['encoder'](projected_input)
+
+                    else:
+                        # Single-task model: use projection and encoder directly
+                        task_name = train_args.task
+                        if task_name == 'rf_fingerprinting':
+                            inputs = rf_slice.to(device).float()  
+                        elif task_name == 'cfo_estimation':
+                            inputs = cfo_slice.to(device).float()
+                        elif task_name == 'channel_estimation':
+                            inputs = channel_slice.to(device).float()
+
+                        projected = model['projection'](inputs)
+                        
+                        # Handle direct CFO case where encoder might be bypassed
+                        if task_name == 'cfo_estimation' and getattr(train_args, 'direct_cfo', False):
+                            encoded_activation = projected  # Skip encoder for direct CFO
+                        else:
+                            encoded_activation = model['encoder'](projected)
+
+                    #import pdb; pdb.set_trace()
+
+                    # print(f"Encoded activation shape: {encoded_activation.shape}")
+                    # print(f"RF inputs to save shape: {rf_slice.shape}")
+                    # print(f"CFO inputs shape: {cfo_slice.shape}")
+                    # print(f"Channel inputs shape: {channel_slice.shape}")
+                    # print(f"RF label shape: {rf_label_slice.shape}")
+                    # print(f"CFO labels shape: {cfo_label_slice.shape}")
+                    # print(f"Channel labels shape: {channel_label_slice.shape}")
+                    # print(f"rf label: {rf_label_slice}")
+                    # print(f"cfo label: {cfo_label_slice}")
+                   # print(f"channel label: {channel_label_slice}")
+
+                    # Save the activation for this slice
+                    data_to_save = {
+                        'activation': encoded_activation.detach().cpu(),
+                        'filename': slice_filename,
+                        'RF_X': rf_slice.detach().cpu(),
+                        'CFO_X': cfo_slice.detach().cpu(),
+                        'Channel_X': channel_slice.detach().cpu(),
+                        'rf_label': rf_label_slice.detach().cpu(),
+                        'cfo_label': cfo_label_slice.detach().cpu(),
+                        'channel_label': channel_label_slice.detach().cpu()
+                    }
+                    torch.save(data_to_save, save_path, _use_new_zipfile_serialization=False)
+                
+            else:
+                # Handle regular dataset or single slice - original logic
+                save_path = os.path.join(output_dir, filename.replace('.mat', '.pth'))
+
+                if os.path.exists(save_path) and not cli_args.overwrite:
+                    continue
+
+                # This tensor will hold the RF data that gets saved.
+                rf_inputs_to_save = rf_inputs.detach().cpu() #Bx2x1024
+
+                if is_mtl:
+                    # MTL model: use projections dict and sum projections
+                    projected_tensors = []
+                    task_data_map = {
+                        'rf_fingerprinting': rf_inputs,
+                        'cfo_estimation': cfo_inputs,
+                        'channel_estimation': channel_inputs
+                    }
+
+                    for task_name in train_args.task:
+                        inputs = task_data_map[task_name].to(device).float()
                         proj = model['projections'][task_name](inputs)
                         projected_tensors.append(proj)
-                
-                if getattr(train_args, 'fusion_type', 'sum') == 'concat':
-                    projected_input = torch.cat(projected_tensors, dim=2)
+                    
+                    if getattr(train_args, 'fusion_type', 'sum') == 'concat':
+                        projected_input = torch.cat(projected_tensors, dim=2)
+                    else:
+                        projected_input = torch.sum(torch.stack(projected_tensors), dim=0)
+
+                    encoded_activation = model['encoder'](projected_input)
+
                 else:
-                    projected_input = torch.sum(torch.stack(projected_tensors), dim=0)
+                    # Single-task model: use projection and encoder directly
+                    task_name = train_args.task
+                    if task_name == 'rf_fingerprinting':
+                        inputs = rf_inputs.to(device).float()  
+                    elif task_name == 'cfo_estimation':
+                        inputs = cfo_inputs.to(device).float()
+                    elif task_name == 'channel_estimation':
+                        inputs = channel_inputs.to(device).float()
 
-                encoded_activation = model['encoder'](projected_input)
+                    projected = model['projection'](inputs)
+                    
+                    # Handle direct CFO case where encoder might be bypassed
+                    if task_name == 'cfo_estimation' and getattr(train_args, 'direct_cfo', False):
+                        encoded_activation = projected  # Skip encoder for direct CFO
+                    else:
+                        encoded_activation = model['encoder'](projected)
 
-            else:
-                # Single-task model: use projection and encoder directly
-                task_name = train_args.task
-                if task_name == 'rf_fingerprinting':
-                    inputs = rf_inputs.to(device).float()  
-                elif task_name == 'cfo_estimation':
-                    inputs = cfo_inputs.to(device).float()
-                elif task_name == 'channel_estimation':
-                    inputs = channel_inputs.to(device).float()
 
-                projected = model['projection'](inputs)
-                
-                # Handle direct CFO case where encoder might be bypassed
-                if task_name == 'cfo_estimation' and getattr(train_args, 'direct_cfo', False):
-                    # For direct CFO, the "encoded" activation is actually just the projection
-                    # But we still want to save something, so let's use a dummy encoder pass
-                    # or just use the projection directly
-                    encoded_activation = projected  # Skip encoder for direct CFO
-                else:
-                    encoded_activation = model['encoder'](projected)
-                
-                # if task_name == 'rf_fingerprinting':
-                #     # Average the activations of all slices to get a single vector per file
-                #     encoded_activation = encoded_activation.mean(dim=0, keepdim=True)
+                print(f"Encoded activation shape: {encoded_activation.shape}")
+                print(f"RF inputs to save shape: {rf_inputs_to_save.shape}")
+                print(f"CFO inputs shape: {cfo_inputs.shape}")
+                print(f"Channel inputs shape: {channel_inputs.shape}")
+                print(f"RF label shape: {rf_labels.shape}")
+                print(f"CFO labels shape: {cfo_labels.shape}")
+                print(f"Channel labels shape: {channel_labels.shape}")
+                print(f"rf label: {rf_labels}")
+                print(f"cfo label: {cfo_labels}")
+                #print(f"channel label: {channel_labels}")
 
-            # Save the activation
-            data_to_save = {
-                'activation': encoded_activation.detach().cpu(),
-                'filename': filename,
-                'RF_X': rf_inputs_to_save,
-                'CFO_X': cfo_inputs.detach().cpu(),
-                'Channel_X': channel_inputs.detach().cpu(),
-                'rf_label': rf_labels.detach().cpu(),
-                'cfo_label': cfo_labels.detach().cpu(),
-                'channel_label': channel_labels.detach().cpu()
-            }
-            torch.save(data_to_save, save_path, _use_new_zipfile_serialization=False)
+                # Save the activation
+                data_to_save = {
+                    'activation': encoded_activation.detach().cpu(),
+                    'filename': filename,
+                    'RF_X': rf_inputs_to_save,
+                    'CFO_X': cfo_inputs.detach().cpu(),
+                    'Channel_X': channel_inputs.detach().cpu(),
+                    'rf_label': rf_labels.detach().cpu(),
+                    'cfo_label': cfo_labels.detach().cpu(),
+                    'channel_label': channel_labels.detach().cpu()
+                }
+                torch.save(data_to_save, save_path, _use_new_zipfile_serialization=False)
 
     print(f"\nExtraction complete. Activations are saved in {output_dir}")
 
