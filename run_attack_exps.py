@@ -65,7 +65,7 @@ def run_command(command: str, task_type: str):
 remote_activation = True #STrue
 
 
-results_path =  "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1"
+results_path =  "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_parallel_20250803_153540/rf_fixed"
 #results_path =  "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
 activations_base =  os.getenv("ACTIVATIONS_BASE")# "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
 extract_activation_script = os.getenv("EXTRACT_ACTIVATION_SCRIPT")# "/home/hofmann/Documents/projects/RepresentationLearning/code/dra_1/extract_activations.py"
@@ -148,7 +148,7 @@ def main():
     
 
     for task in tasks:
-        possible_tasks = ["rf"]  # Add all tasks you want to attack
+        possible_tasks = ["rf","cfo","channel"]  # Add all tasks you want to attack
         maybe_tasks = task.split("_")
         
         # Check if any of the possible tasks appear in this directory name
@@ -243,7 +243,7 @@ def main():
         noise_types = ["none","isotropic",'nonisotropic']
         
         leaked_fractions = [0.1,0.5,1.0]
-        lambda_factors = [1e-1,1e-2, 1e-3,1e-4] 
+        lambda_factors = [0.01]#[1e-1,1e-2, 1e-3] 
 
         for noise_type in noise_types:
             if noise_type == "none":
@@ -259,8 +259,8 @@ def main():
                         #     continue
 
                         #do not attack cfo and channel for now
-                        if t == "cfo" or t == "channel":
-                            continue
+                        # if t == "cfo" or t == "channel":
+                        #     continue
                         
                         # Construct the results directory path
                         frac_str = str(leaked_fraction).replace('.', '_')

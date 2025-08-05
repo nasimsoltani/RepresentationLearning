@@ -32,7 +32,7 @@ fi
 
 # IMPORTANT: SET THIS PATH to the top-level directory containing all your experiment results.
 # Can be overridden by command line argument
-DEFAULT_RESULTS_DIR="/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1"
+DEFAULT_RESULTS_DIR="/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_parallel_20250803_153540/rf_fixed"
 
 # Parse command line arguments
 if [ $# -eq 1 ]; then
@@ -46,7 +46,7 @@ EVAL_DATASET_PATH="$PKL_FILE_PATH/rf_partition_dict_0.5.pkl"
 #EVAL_DATASET_PATH="/home/hofmann/Documents/projects/RepresentationLearning/dataset/rf_partition_dict_0.5.pkl" # <-- CHANGE THIS
 
 GPU_ID=0
-TEST_FRACTION=0.2
+TEST_FRACTION=0.5
 
 # =================================================================================
 # Run Batch Evaluation

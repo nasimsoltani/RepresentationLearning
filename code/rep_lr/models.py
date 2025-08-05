@@ -140,7 +140,7 @@ class SEBlock(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, slice_size, output_dim=128, dropout=0.25, num_blocks=5):
+    def __init__(self, slice_size, output_dim=128, dropout=0.25, num_blocks=5, input_channels=2):
         """
         An encoder that transforms input through a sequence of convolutional blocks.
         Based on RFFingerprintingNet architecture, with added SE blocks.
@@ -150,9 +150,10 @@ class Encoder(nn.Module):
             output_dim (int): Final output dimension for each of the 2 channels.
             dropout (float): Dropout probability for all layers
             num_blocks (int): Number of convolutional blocks (default: 5)
+            input_channels (int): Number of input channels (default: 2)
         
         Shape:
-            - Input: (batch_size, 2, slice_size)
+            - Input: (batch_size, input_channels, slice_size)
             - Output: (batch_size, 2, output_dim)
         
         Example:
@@ -171,7 +172,7 @@ class Encoder(nn.Module):
         self.bn_layers = nn.ModuleList()
         for i in range(num_blocks):
             if i == 0:
-                self.conv_layers.append(nn.Conv1d(2, channel, kernel_size=7, padding="same"))
+                self.conv_layers.append(nn.Conv1d(input_channels, channel, kernel_size=7, padding="same"))
                 self.bn_layers.append(nn.BatchNorm1d(channel))
                 self.conv_layers.append(nn.Conv1d(channel, channel, kernel_size=5, padding="same"))
                 self.bn_layers.append(nn.BatchNorm1d(channel))
@@ -570,7 +571,7 @@ class CFOAdaptiveHead(nn.Module):
 
 
 class TaskAdaptiveEncoder(nn.Module):
-	def __init__(self, slice_size, output_dim=128, dropout=0.25, num_blocks=3):
+	def __init__(self, slice_size, output_dim=128, dropout=0.25, num_blocks=3, input_channels=2):
 		"""
 		Enhanced encoder that works better for multiple tasks including CFO.
 		Less aggressive pooling and more gradual feature extraction.
@@ -580,6 +581,7 @@ class TaskAdaptiveEncoder(nn.Module):
 			output_dim (int): Final output dimension for each of the 2 channels
 			dropout (float): Dropout probability
 			num_blocks (int): Number of convolutional blocks (fewer for CFO compatibility)
+			input_channels (int): Number of input channels (default: 2)
 		"""
 		super(TaskAdaptiveEncoder, self).__init__()
 		self.output_dim = output_dim
@@ -588,7 +590,7 @@ class TaskAdaptiveEncoder(nn.Module):
 		# Use smaller number of blocks and gentler pooling for CFO compatibility
 		self.layers = nn.ModuleList()
 		
-		channels = [2, 32, 64, 64]  # Gentler channel progression
+		channels = [input_channels, 32, 64, 64]  # Gentler channel progression
 		
 		for i in range(num_blocks):
 			in_ch = channels[i]

@@ -69,7 +69,7 @@ def main():
     
     # MTL arguments
     parser.add_argument('--mtl', action='store_true', help='Enable Multi-Task Learning.')
-    parser.add_argument('--fusion_type', type=str, default='sum', choices=['sum', 'concat'], help='Fusion type for MTL projections.')
+    parser.add_argument('--fusion_type', type=str, default='sum', choices=['sum', 'concat', 'depth_concat'], help='Fusion type for MTL projections.')
     parser.add_argument('--w_rf', type=float, default=1.0, help='Weight for RF fingerprinting loss.')
     parser.add_argument('--w_channel', type=float, default=1.0, help='Weight for channel estimation loss.')
     parser.add_argument('--w_cfo', type=float, default=1.0, help='Weight for CFO estimation loss.')
@@ -193,14 +193,33 @@ def main():
                 loss_fns[task] = nn.HuberLoss(delta=0.1)  # More robust to outliers than MSE
 
         # Choose encoder based on arguments (MTL)
+        encoder_input_dim = args.proj_seq_len
+        input_channels = 2
+        print(f"Initial encoder_input_dim: {encoder_input_dim}")
+        print(f"Initial input_channels: {input_channels}")
+        print(f"Fusion type: {getattr(args, 'fusion_type', 'sum')}")
+        print(f"Number of tasks: {len(args.task)}")
+        
+        if getattr(args, 'fusion_type', 'sum') == 'concat':
+            print("Concatenating projections")
+            encoder_input_dim = args.proj_seq_len * len(args.task)
+        elif getattr(args, 'fusion_type', 'sum') == 'depth_concat':
+            print("Depth concatenating projections")
+            input_channels = 2 * len(args.task)
+        
+        print(f"Final encoder_input_dim: {encoder_input_dim}")
+        print(f"Final input_channels: {input_channels}")
+
         if args.task_adaptive_encoder:
             print(f"Using TaskAdaptiveEncoder with {args.encoder_num_blocks} blocks")
-            encoder_input_dim = args.proj_seq_len * len(args.task) if getattr(args, 'fusion_type', 'sum') == 'concat' else args.proj_seq_len
-            encoder = TaskAdaptiveEncoder(slice_size=encoder_input_dim, output_dim=args.d2, dropout=args.dropout, num_blocks=args.encoder_num_blocks)
+            print(f"Encoder input dimension: {encoder_input_dim}")
+            print(f"Encoder input channels: {input_channels}")
+            encoder = TaskAdaptiveEncoder(slice_size=encoder_input_dim, output_dim=args.d2, dropout=args.dropout, num_blocks=args.encoder_num_blocks, input_channels=input_channels)
         else:
             print(f"Using standard Encoder with {args.encoder_num_blocks} blocks")
-            encoder_input_dim = args.proj_seq_len * len(args.task) if getattr(args, 'fusion_type', 'sum') == 'concat' else args.proj_seq_len
-            encoder = Encoder(slice_size=encoder_input_dim, output_dim=args.d2, dropout=args.dropout, num_blocks=args.encoder_num_blocks)
+            print(f"Encoder input dimension: {encoder_input_dim}")
+            print(f"Encoder input channels: {input_channels}")
+            encoder = Encoder(slice_size=encoder_input_dim, output_dim=args.d2, dropout=args.dropout, num_blocks=args.encoder_num_blocks, input_channels=input_channels)
         
         model = nn.ModuleDict({
             'projections': projections,

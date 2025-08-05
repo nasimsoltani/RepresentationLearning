@@ -68,6 +68,8 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
                     
                     if getattr(args, 'fusion_type', 'sum') == 'concat':
                         projected_input = torch.cat(projected_tensors, dim=2)
+                    elif getattr(args, 'fusion_type', 'sum') == 'depth_concat':
+                        projected_input = torch.cat(projected_tensors, dim=1)
                     else:
                         projected_input = torch.sum(torch.stack(projected_tensors), dim=0)
                     
@@ -229,6 +231,8 @@ def train_model(model, train_dl, val_dl, loss_fn, optimizer, args):
 
                         if getattr(args, 'fusion_type', 'sum') == 'concat':
                             projected_input = torch.cat(projected_tensors, dim=2)
+                        elif getattr(args, 'fusion_type', 'sum') == 'depth_concat':
+                            projected_input = torch.cat(projected_tensors, dim=1)
                         else:
                             projected_input = torch.sum(torch.stack(projected_tensors), dim=0)
                         

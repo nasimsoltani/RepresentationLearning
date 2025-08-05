@@ -126,7 +126,7 @@ def main(args):
     if args.noise_type == 'nonisotropic':
         wandb_name += f"_lambda_{args.lambda_factor}"
     wandb.init(
-        project="data-reconstruction-attack-run-1-rf-attacks",
+        project="data-reconstruction-attack-run-2-depthconcat-rffixed-3",
         config=wandb_config,
         name=wandb_name
     )
@@ -409,12 +409,12 @@ def main(args):
     print(f"Test results (metrics only) saved to {results_path}")
 
     # Save the large arrays to a compressed NPZ file
-    npz_path = os.path.join(save_dir, f"attack_{args.task}_tensors.npz")
-    # Concatenate lists of batches into single numpy arrays
+    # npz_path = os.path.join(save_dir, f"attack_{args.task}_tensors.npz")
+    # # Concatenate lists of batches into single numpy arrays
     all_true_data_np = np.concatenate(all_true_data, axis=0)
     all_pred_data_np = np.concatenate(all_pred_data, axis=0)
-    np.savez_compressed(npz_path, true_x=all_true_data_np, pred_x=all_pred_data_np)
-    print(f"Full signal data saved to {npz_path}")
+    # np.savez_compressed(npz_path, true_x=all_true_data_np, pred_x=all_pred_data_np)
+    # print(f"Full signal data saved to {npz_path}")
 
     # --- Visualize a few reconstructions ---
     print("Generating reconstruction plot...")
