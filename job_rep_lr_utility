@@ -3,7 +3,7 @@
 #SBATCH -o rep_lr_attack.o%j       # Name of stdout output file
 #SBATCH -p gh          # Queue (partition) name
 #SBATCH -N 1               # Total # of nodes
-#SBATCH -n 4               # Total # of mpi tasks
+#SBATCH -n 1              # Total # of mpi tasks
 #SBATCH -t 1:00:00        # Run time (hh:mm:ss)
 #SBATCH -A DBS24008       # Allocation name (req'd if you have more than 1)
 
@@ -20,4 +20,5 @@ conda activate vllm
 
 #python -u /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/run_utility_exps.py 
 
-python -u /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/run_utility_exps_lambda.py
+#python -u /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/run_utility_exps_lambda.py
+python -u /scratch/10608/aadharsh_aadhithya/repos/RepresentationLearning/run_utility_exps_lambda.py

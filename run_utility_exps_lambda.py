@@ -17,7 +17,8 @@ safe_env_vars = {k: v for k, v in env_vars_from_dotenv.items() if v is not None}
 
 # Define noise levels and lambda factors (same as in run_attack_exps.py)
 NOISE_LEVELS = [5, 10, 15, 20]
-LAMBDA_FACTORS = [0.01]
+LAMBDA_FACTORS = [1e+1,1,1e-1,1e-2,1e-3, 1e-4 ]#[1e-1,1e-2,1e-3] 
+# lambda_factors = [0.01]
 NOISE_TYPES = ["none", "isotropic", "nonisotropic"]
 
 # Mapping for encoder_train_task
@@ -27,7 +28,7 @@ TASK_MAPPING = {
     "channel": "channel_estimation"
 }
 
-@ray.remote(num_gpus=0.1)
+@ray.remote(num_gpus=0.01)
 def run_command(command: str, task_type: str):
     """
     This worker function now only 'reserves' 0.1 of a GPU's compute.
@@ -46,7 +47,7 @@ def run_command(command: str, task_type: str):
 
 # --- Configuration ---
 # You can set these paths in your .env file or modify them here.
-results_path = "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250730_220537_7"
+results_path = "/scratch/10608/aadharsh_aadhithya/repos/RepresentationLearning/results_parallel_20250829_214158/rf_fixed"
 activations_base = os.getenv("ACTIVATIONS_BASE", "/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/activations")
 utility_script = "code/dra_1/plot_utility_lambda.py"
 #ray_tmp_dir = os.getenv("RAY_TMP_DIR")
@@ -219,11 +220,11 @@ def main():
             continue
 
         # Find the directory containing attack results
-        attack_results_dir = os.path.join(full_experiment_path, 'attack_results_robust')
+        # attack_results_dir = os.path.join(full_experiment_path, 'attack_results_robust')
         
-        if not os.path.isdir(attack_results_dir):
-            print(f"Warning: 'attack_results_robust' directory not found in {full_experiment_path}.")
-            continue
+        # if not os.path.isdir(attack_results_dir):
+        #     print(f"Warning: 'attack_results_robust' directory not found in {full_experiment_path}.")
+        #     continue
         
         # Get encoder_train_task for this experiment
         encoder_train_task = parse_encoder_train_task(task_dir_name)

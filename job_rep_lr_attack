@@ -77,4 +77,8 @@ sed -i '/RAY_HEAD_ADDRESS/d' .env
 
 echo RAY_HEAD_ADDRESS=$ip_head >> .env
 
-python -u /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/run_attack_exps.py 
+python -u /scratch/10608/aadharsh_aadhithya/repos/RepresentationLearning/run_attack_exps.py
+# echo "Python script finished. Waiting for Ray processes to terminate..."
+# wait
+
+echo "SLURM job completed."

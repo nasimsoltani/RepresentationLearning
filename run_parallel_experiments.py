@@ -95,7 +95,7 @@ def main():
         'd2': 256,
         'head_hidden_dim': 256,
         'encoder_num_blocks': 2,
-        'fusion_type': 'depth_concat',
+        'fusion_type': 'sum',
         'epochs': 300
     }
 
@@ -119,7 +119,7 @@ def main():
     all_commands = []
 
     # Loop through both --rf_fixed and no-flag configurations
-    for rf_fixed_mode in [True, False]:
+    for rf_fixed_mode in [True]: #, False]:
         mode_name = "rf_fixed" if rf_fixed_mode else "rf_variable"
         mode_dir = os.path.join(base_results_dir, mode_name)
         

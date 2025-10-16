@@ -65,7 +65,8 @@ def run_command(command: str, task_type: str):
 remote_activation = True #STrue
 
 
-results_path =  "/scratch/10608/aadharsh_aadhithya/results/rep_lr/results_parallel_20250803_153540/rf_fixed"
+results_path =  "/scratch/10608/aadharsh_aadhithya/repos/RepresentationLearning/results_parallel_20250829_214158/rf_fixed_1"#"/scratch/10608/aadharsh_aadhithya/results/rep_lr/results_20250725_111527/run_2/run_2"
+#"/scratch/10608/aadharsh_aadhithya/results/rep_lr/results_parallel_20250803_153540/rf_fixed"
 #results_path =  "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
 activations_base =  os.getenv("ACTIVATIONS_BASE")# "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
 extract_activation_script = os.getenv("EXTRACT_ACTIVATION_SCRIPT")# "/home/hofmann/Documents/projects/RepresentationLearning/code/dra_1/extract_activations.py"
@@ -242,8 +243,8 @@ def main():
         #task-> [t1, t2, t3]
         noise_types = ["none","isotropic",'nonisotropic']
         
-        leaked_fractions = [0.1,0.5,1.0]
-        lambda_factors = [0.01]#[1e-1,1e-2, 1e-3] 
+        leaked_fractions = [0.5]#[0.02, 0.04, 0.06, 0.08,0.1,0.5,1.0]#[0.1,0.5,1.0]
+        lambda_factors =  [0.01]#[1e+1,1,1e-1,1e-2,1e-3, 1e-4 ] #[1e-1,1e-2,1e-3] 
 
         for noise_type in noise_types:
             if noise_type == "none":
@@ -366,7 +367,17 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"Error: {e}")
+        ray.shutdown()
+        print("Ray cluster shut down successfully.")
+        raise e
+    finally:
+        print("Shutting down Ray cluster...")
+        ray.shutdown()
+        print("Ray cluster shut down successfully.")
     
 
         

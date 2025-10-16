@@ -19,4 +19,5 @@ conda activate vllm
 
 #/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/scripts/batch_eval_1.sh
 #for paraleel
-/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/scripts/batch_eval_parallel.sh
+/scratch/10608/aadharsh_aadhithya/repos/RepresentationLearning/scripts/batch_eval_parallel.sh
+#/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/scripts/batch_eval_parallel.sh

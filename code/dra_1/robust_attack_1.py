@@ -126,7 +126,7 @@ def main(args):
     if args.noise_type == 'nonisotropic':
         wandb_name += f"_lambda_{args.lambda_factor}"
     wandb.init(
-        project="data-reconstruction-attack-run-2-depthconcat-rffixed-3",
+        project="data-reconstruction-attack-run-2-sum-attack-4-rffixed-2",
         config=wandb_config,
         name=wandb_name
     )
@@ -150,23 +150,27 @@ def main(args):
     with open(partition_file, 'rb') as f:
         partitions = pickle.load(f)
     
+
     train_files = partitions['train']
     val_files = partitions['val']
     test_files = partitions['test']
+
 
     # Sub-sample the training data based on the leaked fraction
     num_leaked_samples = int(len(train_files) * args.leaked_fraction)
     leaked_train_files = train_files[:num_leaked_samples]
     print(f"Using {len(leaked_train_files)} ({args.leaked_fraction*100}%) training samples for the attack.")
 
+    train_full_dataset = ActivationDataset(activation_dir=activation_dir, file_list=train_files)
+
 
     train_dataset = ActivationDataset(activation_dir=activation_dir, file_list=leaked_train_files)
     val_dataset = ActivationDataset(activation_dir=activation_dir, file_list=val_files, test_mode=True)
     test_dataset = ActivationDataset(activation_dir=activation_dir, file_list=test_files, test_mode=True)
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=8)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
 
     # --- FIM Calculation (if needed) ---
     L, V = None, None
@@ -176,8 +180,8 @@ def main(args):
         train_args = model_data['train_args']
 
         # Use a subset of training data for FIM calculation
-        fim_subset_indices = np.random.choice(len(train_dataset), size=args.fim_samples, replace=False)
-        fim_dataset = Subset(train_dataset, fim_subset_indices)
+        fim_subset_indices = np.random.choice(len(train_full_dataset), size=args.fim_samples, replace=False)
+        fim_dataset = Subset(train_full_dataset, fim_subset_indices)
         fim_loader = DataLoader(fim_dataset, batch_size=args.batch_size, shuffle=False)
 
         fim = torch.zeros((args.latent_dim, args.latent_dim), device=device)
