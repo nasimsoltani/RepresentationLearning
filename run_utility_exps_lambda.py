@@ -16,8 +16,8 @@ env_vars_from_dotenv = dotenv.dotenv_values()
 safe_env_vars = {k: v for k, v in env_vars_from_dotenv.items() if v is not None}
 
 # Define noise levels and lambda factors (same as in run_attack_exps.py)
-NOISE_LEVELS = [5, 10, 15, 20]
-LAMBDA_FACTORS = [1e+1,1,1e-1,1e-2,1e-3, 1e-4 ]#[1e-1,1e-2,1e-3] 
+NOISE_LEVELS = [5, 10, 55]
+LAMBDA_FACTORS = [0.01]#[1e+1,1,1e-1,1e-2,1e-3, 1e-4 ]#[1e-1,1e-2,1e-3] 
 # lambda_factors = [0.01]
 NOISE_TYPES = ["none", "isotropic", "nonisotropic"]
 

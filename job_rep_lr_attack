@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH -J rep_lr_attack           # Job name
 #SBATCH -o rep_lr_attack.o%j       # Name of stdout output file
-#SBATCH -p gh          # Queue (partition) name
-#SBATCH -N 4              # Total # of nodes
-#SBATCH -n 4               # Total # of mpi tasks
-#SBATCH -t 12:00:00        # Run time (hh:mm:ss)
+#SBATCH -p gh-dev          # Queue (partition) name
+#SBATCH -N 8               # Total # of nodes
+#SBATCH -n 12               # Total # of mpi tasks
+#SBATCH -t 2:00:00        # Run time (hh:mm:ss)
 #SBATCH -A DBS24008       # Allocation name (req'd if you have more than 1)
 
 # Other commands must follow all #SBATCH directives...
@@ -63,7 +63,7 @@ for ((i = 1; i <= worker_num; i++)); do
 done
 
 
-sleep 20  # Allow time for the Ray cluster to stabilize
+sleep 60  # Allow time for the Ray cluster to stabilize
 
 
 # Calculate total GPUs across the cluster
@@ -77,8 +77,100 @@ sed -i '/RAY_HEAD_ADDRESS/d' .env
 
 echo RAY_HEAD_ADDRESS=$ip_head >> .env
 
-python -u /scratch/10608/aadharsh_aadhithya/repos/RepresentationLearning/run_attack_exps.py
-# echo "Python script finished. Waiting for Ray processes to terminate..."
-# wait
+python -u /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/run_attack_exps.py 
+echo "Python script finished. Waiting for Ray processes to terminate..."
 
-echo "SLURM job completed."
+# #!/bin/bash
+# #SBATCH -J rep_lr_attack           # Job name
+# #SBATCH -o rep_lr_attack.o%j       # Name of stdout output file
+# #SBATCH -p gh          # Queue (partition) name
+# #SBATCH -N 4              # Total # of nodes
+# #SBATCH -n 4               # Total # of mpi tasks
+# #SBATCH -t 12:00:00        # Run time (hh:mm:ss)
+# #SBATCH -A DBS24008       # Allocation name (req'd if you have more than 1)
+
+# # Other commands must follow all #SBATCH directives...
+
+# source $HOME/.bashrc
+
+# module load gcc/13 cuda/12.6 nccl/12.4 #nvidia_math/12.6
+
+# conda init
+
+# conda activate vllm
+
+# gpus_per_node=${SLURM_GPUS_PER_NODE:-1}
+
+# nodes=$(scontrol show hostnames "$SLURM_JOB_NODELIST")
+# nodes_array=($nodes)
+
+# head_node=${nodes_array[0]}
+# echo "Initializing head node setup..."
+# head_node_ip=$(srun --nodes=1 --ntasks=1 -w "$head_node" hostname --ip-address)
+
+
+# # Handle IPv6 case if necessary
+# # if [[ "$head_node_ip" == *" "* ]]; then
+# #    IFS=' ' read -ra ADDR <<<"$head_node_ip"
+# #    if [[ ${{#ADDR[0]}} -gt 16 ]]; then
+# #        head_node_ip=${ADDR[1]}
+# #    else
+# #        head_node_ip=${ADDR[0]}
+# #    fi
+# #    echo "Detected IPv6, using IPv4 address: $head_node_ip"
+# # fi
+# if [[ "$head_node_ip" == *" "* ]]; then
+#    IFS=' ' read -ra ADDR <<<"$head_node_ip"
+#    if [[ ${#ADDR[0]} -gt 16 ]]; then
+#        head_node_ip=${ADDR[1]}
+#    else
+#        head_node_ip=${ADDR[0]}
+#    fi
+#    echo "Detected IPv6, using IPv4 address: $head_node_ip"
+# fi
+
+# port=6379
+# ip_head=$head_node_ip:$port
+# export ip_head
+# export RAY_HEAD_ADDRESS=$ip_head
+
+# echo "Ray Head Node Address: $ip_head"
+
+
+# echo "Starting Ray head node on $head_node..."
+# srun --nodes=1 --ntasks=1 -w "$head_node" \
+#    ray start --head --node-ip-address="$head_node_ip" --dashboard-host="0.0.0.0" --port=$port \
+#    --num-cpus 72 --num-gpus $gpus_per_node --block &
+   
+   
+# # Start worker nodes
+# worker_num=$((SLURM_JOB_NUM_NODES - 1))
+# for ((i = 1; i <= worker_num; i++)); do
+#    node_i=${nodes_array[$i]}
+#    echo "Starting Ray worker on node: $node_i"
+#    srun --nodes=1 --ntasks=1 -w "$node_i" \
+#        ray start --address "$ip_head" \
+#        --num-cpus 72 --num-gpus $gpus_per_node --block &
+#    sleep 5
+# done
+
+
+# sleep 20  # Allow time for the Ray cluster to stabilize
+
+
+# # Calculate total GPUs across the cluster
+# total_gpus=$((SLURM_JOB_NUM_NODES * gpus_per_node))
+
+# echo "total_gpus: $total_gpus"
+# echo "ray cluster is ready"
+   
+# #remove line with RAY_HEAD_ADDRESS from .env
+# sed -i '/RAY_HEAD_ADDRESS/d' .env
+
+# echo RAY_HEAD_ADDRESS=$ip_head >> .env
+
+# python -u /scratch/10608/aadharsh_aadhithya/repos/RepresentationLearning/run_attack_exps.py
+# # echo "Python script finished. Waiting for Ray processes to terminate..."
+# # wait
+
+# echo "SLURM job completed."

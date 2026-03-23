@@ -32,4 +32,4 @@ no change     /scratch/10608/aadharsh_aadhithya/miniconda/lib/python3.13/site-pa
 no change     /scratch/10608/aadharsh_aadhithya/miniconda/etc/profile.d/conda.csh
 no change     /home1/10608/aadharsh_aadhithya/.bashrc
 No action taken.
-/var/spool/slurmd/job345252/slurm_script: line 22: /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/scripts/batch_eval_parallel.sh: No such file or directory
+slurmstepd: error: *** JOB 469817 ON c608-042 CANCELLED AT 2025-11-29T18:09:58 ***

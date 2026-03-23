@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH -J rep_lr_attack           # Job name
-#SBATCH -o rep_lr_attack.o%j       # Name of stdout output file
-#SBATCH -p gh-dev          # Queue (partition) name
+#SBATCH -J rep_lr_dist           # Job name
+#SBATCH -o rep_lr_dist.o%j       # Name of stdout output file
+#SBATCH -p gh         # Queue (partition) name
 #SBATCH -N 1               # Total # of nodes
 #SBATCH -n 1              # Total # of mpi tasks
-#SBATCH -t 1:00:00        # Run time (hh:mm:ss)
+#SBATCH -t 4:00:00        # Run time (hh:mm:ss)
 #SBATCH -A DBS24008       # Allocation name (req'd if you have more than 1)
 
 # Other commands must follow all #SBATCH directives...
@@ -23,5 +23,10 @@ conda activate vllm
 #python -u /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/run_utility_exps_lambda.py
 #python -u /scratch/10608/aadharsh_aadhithya/repos/RepresentationLearning/run_utility_exps_lambda.py
 
-python run_clip_utility_exps.py \
-  --experiment_path /scratch/10608/aadharsh_aadhithya/results/rep_lr/results_20250725_111527/run_1 
+python code/dra_1/train_distance.py --activation_dir /scratch/10608/aadharsh_aadhithya/data/rep_lr/activations_exps/run_1/rf_cfo_channel \
+ --output_dir /scratch/10608/aadharsh_aadhithya/repos/RepresentationLearning/results/distance_classification_noise \
+ --batch_size 64 --epochs 50 --lr 1e-3 \
+ --fim_samples 1000 \
+ --lambda_factor 0.01 \
+ --patience 8 \
+ --gpu_id 0

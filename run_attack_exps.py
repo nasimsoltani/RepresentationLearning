@@ -12,6 +12,12 @@ env_vars_from_dotenv = dotenv.dotenv_values()
 # Ray's runtime_env expects string values, so filter out any Nones
 safe_env_vars = {k: v for k, v in env_vars_from_dotenv.items() if v is not None}
 
+CLIP_VALUES = [ 50.0 ]
+
+ALLOWED_TASK_DIRS = {
+ "rf_cfo_channel"
+}
+
 
 def calculate_latent_dim(experiment_path):
     """
@@ -65,19 +71,19 @@ def run_command(command: str, task_type: str):
 remote_activation = True #STrue
 
 
-results_path =  "/scratch/10608/aadharsh_aadhithya/repos/RepresentationLearning/results_parallel_20250829_214158/rf_fixed_1"#"/scratch/10608/aadharsh_aadhithya/results/rep_lr/results_20250725_111527/run_2/run_2"
+results_path =  "/scratch/10608/aadharsh_aadhithya/results/rep_lr/results_20250725_111527/run_1" #"/scratch/10608/aadharsh_aadhithya/repos/RepresentationLearning/results_parallel_20250829_214158/rf_fixed_1"#"/scratch/10608/aadharsh_aadhithya/results/rep_lr/results_20250725_111527/run_2/run_2"
 #"/scratch/10608/aadharsh_aadhithya/results/rep_lr/results_parallel_20250803_153540/rf_fixed"
 #results_path =  "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
 activations_base =  os.getenv("ACTIVATIONS_BASE")# "/home/hofmann/Documents/projects/RepresentationLearning/results_20250720_172807"
 extract_activation_script = os.getenv("EXTRACT_ACTIVATION_SCRIPT")# "/home/hofmann/Documents/projects/RepresentationLearning/code/dra_1/extract_activations.py"
-attack_script = os.getenv("ATTACK_SCRIPT")# "/home/hofmann/Documents/projects/RepresentationLearning/code/dra_1/robust_attack.py"
+attack_script = "code/dra_1/robust_attack.py" #os.getenv("ATTACK_SCRIPT")# "/home/hofmann/Documents/projects/RepresentationLearning/code/dra_1/robust_attack.py"
 is_uv=os.getenv("IS_UV")
 ray_tmp_dir = os.getenv("RAY_TMP_DIR")# "/home/hofmann/Documents/projects/RepresentationLearning/ray_temp"
 
 print(os.environ.get("RAY_HEAD_ADDRESS"))
 
-# if not os.path.exists(ray_tmp_dir):
-#     os.makedirs(ray_tmp_dir)
+if not os.path.exists(ray_tmp_dir):
+    os.makedirs(ray_tmp_dir)
 
 
 tasks = os.listdir(results_path)
@@ -109,7 +115,8 @@ tasks = os.listdir(results_path)
 def generate_attack_command(experiment_path, activations_path, task, output_dir, noise_type="none",
                              noise_level=0.0, fim_samples=8000, leaked_fraction=1.0, epochs=40,
                                lr=1e-3, batch_size=128, patience=30, latent_dim=None,
-                               optimizer='adamw', clip_grad_norm=1.0, lambda_factor=1e-5):
+                               optimizer='adamw', clip_grad_norm=1.0, lambda_factor=1e-5,
+                               clip_value=None):
     # Calculate latent_dim dynamically if not provided
     if latent_dim is None:
         latent_dim = calculate_latent_dim(experiment_path)
@@ -123,6 +130,9 @@ def generate_attack_command(experiment_path, activations_path, task, output_dir,
           f"--patience {patience} --latent_dim {latent_dim} "
           f"--optimizer {optimizer} --clip_grad_norm {clip_grad_norm} "
           f"--lambda_factor {lambda_factor}")
+
+    if clip_value is not None:
+        cmd += f" --clip_value {clip_value}"
 
     # if is_uv:
     #     cmd = "uv run " + cmd
@@ -144,7 +154,7 @@ def main():
 
     tasks = os.listdir(results_path)
 
-    tasks = [task for task in tasks if os.path.isdir(os.path.join(results_path, task))]
+    tasks = [task for task in tasks if os.path.isdir(os.path.join(results_path, task)) and task in ALLOWED_TASK_DIRS]
 
     
 
@@ -243,14 +253,14 @@ def main():
         #task-> [t1, t2, t3]
         noise_types = ["none","isotropic",'nonisotropic']
         
-        leaked_fractions = [0.5]#[0.02, 0.04, 0.06, 0.08,0.1,0.5,1.0]#[0.1,0.5,1.0]
-        lambda_factors =  [0.01]#[1e+1,1,1e-1,1e-2,1e-3, 1e-4 ] #[1e-1,1e-2,1e-3] 
+        leaked_fractions = [0.2]#[0.02, 0.04, 0.06, 0.08,0.1,0.5,1.0]#[0.1,0.5,1.0]
+        lambda_factors =  [1]#[1e+1,1,1e-1,1e-2,1e-3, 1e-4 ] #[1e-1,1e-2,1e-3] 
 
         for noise_type in noise_types:
             if noise_type == "none":
                 noise_levels = [0]
             else:
-                noise_levels = [5,10,15,20]
+                noise_levels = [5,10]
             
             for noise_level in noise_levels:
                 for leaked_fraction in leaked_fractions:
@@ -263,18 +273,43 @@ def main():
                         # if t == "cfo" or t == "channel":
                         #     continue
                         
-                        # Construct the results directory path
-                        frac_str = str(leaked_fraction).replace('.', '_')
-                        level_str = str(float(noise_level)).replace('.', '_')
+                        for clip_value in CLIP_VALUES:
+                            # Construct the results directory path
+                            frac_str = str(leaked_fraction).replace('.', '_')
+                            level_str = str(float(noise_level)).replace('.', '_')
+                            clip_label = "noclip" if clip_value is None else str(clip_value).replace(".", "_")
 
-                        # Create a timestamped base directory for this run's attack results
-                        base_attack_dir = os.path.join(full_task_base_path, 'attack_results_robust', f'attack_{timestamp}')
+                            # Create a timestamped base directory for this run's attack results
+                            base_attack_dir = os.path.join(full_task_base_path, 'attack_results_robust', f'attack_{timestamp}')
 
-                        # Define the final results directory for this specific configuration
-                        if noise_type == 'nonisotropic':
-                            for lambda_factor in lambda_factors:
-                                lambda_str = f"lambda_{str(lambda_factor).replace('.', '_')}"
-                                results_dir = os.path.join(base_attack_dir, t, noise_type, f'leaked_frac_{frac_str}', f'noise_level_{level_str}', lambda_str)
+                            # Define the final results directory for this specific configuration
+                            if noise_type == 'nonisotropic':
+                                for lambda_factor in lambda_factors:
+                                    lambda_str = f"lambda_{str(lambda_factor).replace('.', '_')}"
+                                    results_dir = os.path.join(base_attack_dir, t, noise_type, f'leaked_frac_{frac_str}', f'noise_level_{level_str}', f'clip_{clip_label}', lambda_str)
+                                    
+                                    attack_command = generate_attack_command(experiment_path=full_task_base_path,
+                                                                            activations_path=activations_path,
+                                                                            task=t,
+                                                                            output_dir=results_dir,
+                                                                            noise_type=noise_type,
+                                                                            noise_level=noise_level,
+                                                                            leaked_fraction=leaked_fraction,
+                                                                            optimizer='adamw',
+                                                                            clip_grad_norm=1.0,
+                                                                            lambda_factor=lambda_factor,
+                                                                            clip_value=clip_value)
+                                    
+                                    # Ensure the directory exists
+                                    os.makedirs(results_dir, exist_ok=True)
+                                    
+                                    # Define the log file path and redirect output
+                                    log_file_path = os.path.join(results_dir, 'attack.log')
+                                    print(f"Log file path: {log_file_path}")
+                                    attack_command = attack_command + f" > {log_file_path} 2>&1"
+                                    attack_commands.append(attack_command)
+                            else:
+                                results_dir = os.path.join(base_attack_dir, t, noise_type, f'leaked_frac_{frac_str}', f'noise_level_{level_str}', f'clip_{clip_label}')
                                 
                                 attack_command = generate_attack_command(experiment_path=full_task_base_path,
                                                                         activations_path=activations_path,
@@ -285,7 +320,8 @@ def main():
                                                                         leaked_fraction=leaked_fraction,
                                                                         optimizer='adamw',
                                                                         clip_grad_norm=1.0,
-                                                                        lambda_factor=lambda_factor)
+                                                                        lambda_factor=0.0,
+                                                                        clip_value=clip_value)
                                 
                                 # Ensure the directory exists
                                 os.makedirs(results_dir, exist_ok=True)
@@ -295,28 +331,6 @@ def main():
                                 print(f"Log file path: {log_file_path}")
                                 attack_command = attack_command + f" > {log_file_path} 2>&1"
                                 attack_commands.append(attack_command)
-                        else:
-                            results_dir = os.path.join(base_attack_dir, t, noise_type, f'leaked_frac_{frac_str}', f'noise_level_{level_str}')
-                            
-                            attack_command = generate_attack_command(experiment_path=full_task_base_path,
-                                                                    activations_path=activations_path,
-                                                                    task=t,
-                                                                    output_dir=results_dir,
-                                                                    noise_type=noise_type,
-                                                                    noise_level=noise_level,
-                                                                    leaked_fraction=leaked_fraction,
-                                                                    optimizer='adamw',
-                                                                    clip_grad_norm=1.0,
-                                                                    lambda_factor=0.0)
-                            
-                            # Ensure the directory exists
-                            os.makedirs(results_dir, exist_ok=True)
-                            
-                            # Define the log file path and redirect output
-                            log_file_path = os.path.join(results_dir, 'attack.log')
-                            print(f"Log file path: {log_file_path}")
-                            attack_command = attack_command + f" > {log_file_path} 2>&1"
-                            attack_commands.append(attack_command)
 
 
     print(f"Generated {len(activation_commands)} activation commands and {len(attack_commands)} attack commands")
@@ -328,7 +342,7 @@ def main():
         print(f"Connecting to existing Ray cluster at: {ray_head_address}")
         ray.init(
             address=ray_head_address,
-           # _temp_dir=ray_tmp_dir,
+           _temp_dir=ray_tmp_dir,
             runtime_env={
                 "conda": "vllm",
                 "env_vars": safe_env_vars,
@@ -337,7 +351,8 @@ def main():
     else:
         print("RAY_HEAD_ADDRESS not found, initializing Ray locally.")
         ray.init(
-            #_temp_dir=ray_tmp_dir,
+            address="local",
+            _temp_dir=ray_tmp_dir,
             runtime_env={
                 "conda": "vllm",
                 "env_vars": safe_env_vars,

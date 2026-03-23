@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH -J rep_lr_attack           # Job name
 #SBATCH -o rep_lr_attack.o%j       # Name of stdout output file
-#SBATCH -p gh          # Queue (partition) name
+#SBATCH -p gh-dev          # Queue (partition) name
 #SBATCH -N 1               # Total # of nodes
 #SBATCH -n 4               # Total # of mpi tasks
-#SBATCH -t 24:00:00        # Run time (hh:mm:ss)
+#SBATCH -t 2:00:00        # Run time (hh:mm:ss)
 #SBATCH -A DBS24008       # Allocation name (req'd if you have more than 1)
 
 # Other commands must follow all #SBATCH directives...
@@ -17,16 +17,17 @@ conda init
 
 conda activate vllm
 
+python -u /scratch/10608/aadharsh_aadhithya/repos/RepresentationLearning/run_attack_exps.py
 
-python -u /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/code/dra_1/robust_attack.py \
- --experiment_path /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1/rf_cfo/rf_fingerprinting_cfo_estimation_20250725_172827 \
- --activations_path /scratch/10608/aadharsh_aadhithya/data/rep_lr/activations_exps/run_1/rf_cfo \
- --output_dir /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1/rf_cfo/rf_fingerprinting_cfo_estimation_20250725_172827/robust_attack \
- --task rf \
- --noise_type isotropic \
- --noise_level 10 \
- --fim_samples 8000 \
- --leaked_fraction 0.1 \
- --epochs 50 \
- --lr 1e-3 \
- --batch_size 256 \
+# python -u /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/code/dra_1/robust_attack.py \
+#  --experiment_path /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1/rf_cfo/rf_fingerprinting_cfo_estimation_20250725_172827 \
+#  --activations_path /scratch/10608/aadharsh_aadhithya/data/rep_lr/activations_exps/run_1/rf_cfo \
+#  --output_dir /work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_20250725_111527/run_1/rf_cfo/rf_fingerprinting_cfo_estimation_20250725_172827/robust_attack \
+#  --task rf \
+#  --noise_type isotropic \
+#  --noise_level 10 \
+#  --fim_samples 8000 \
+#  --leaked_fraction 0.1 \
+#  --epochs 50 \
+#  --lr 1e-3 \
+#  --batch_size 256 \

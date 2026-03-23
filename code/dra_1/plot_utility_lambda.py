@@ -88,7 +88,7 @@ def get_empirical_fim(head, data_loader, device, latent_dim):
     return fim / num_samples if num_samples > 0 else fim
 
 
-def evaluate_utility(head, test_dl, device, noise_type, noise_level, L, V, lambda_factor, task_name):
+def evaluate_utility(head, test_dl, device, noise_type, noise_level, L, V, lambda_factor, clip_value, task_name):
     """Unified utility evaluation function."""
     head.to(device).eval()
     y_true, y_pred = [], []
@@ -103,11 +103,26 @@ def evaluate_utility(head, test_dl, device, noise_type, noise_level, L, V, lambd
             activations_flat = activations.view(activations.size(0), -1)
 
             if noise_type == 'isotropic':
-                noisy_activations = inject_isotropic_noise(activations_flat, noise_level)
+                noisy_activations = inject_isotropic_noise(
+                    activations_flat, noise_level, clip_value=clip_value
+                )
             elif noise_type == 'nonisotropic':
-                noisy_activations = inject_nonisotropic_noise(activations_flat, noise_level, L, V, lambda_factor)
+                noisy_activations = inject_nonisotropic_noise(
+                    activations_flat,
+                    noise_level,
+                    L,
+                    V,
+                    lambda_factor=lambda_factor,
+                    clip_value=clip_value,
+                )
             else: # 'none'
-                noisy_activations = activations_flat
+                if clip_value is not None:
+                    # Treat as isotropic with zero noise to apply clipping behavior
+                    noisy_activations = inject_isotropic_noise(
+                        activations_flat, 0.0, clip_value=clip_value
+                    )
+                else:
+                    noisy_activations = activations_flat
 
             # Reshape for head if needed
             if task_name in ['rf_fingerprinting', 'cfo_estimation']:
@@ -158,6 +173,7 @@ def main():
     parser.add_argument('--noise_type', type=str, required=True, choices=['none', 'isotropic', 'nonisotropic'], help='Type of noise to inject.')
     parser.add_argument('--noise_level', type=float, required=True, help='Noise level (variance).')
     parser.add_argument('--lambda_factor', type=float, default=None, help='Lambda factor for non-isotropic noise.')
+    parser.add_argument('--clip_value', type=float, default=None, help='Optional norm clip value for activations.')
     parser.add_argument('--fim_samples', type=int, default=8000, help='Number of samples for FIM calculation.')
     parser.add_argument('--gpu_id', default=0, type=int, help='GPU ID to use.')
     parser.add_argument('--batch_size', type=int, default=64, help='Batch size for evaluation.')
@@ -206,7 +222,18 @@ def main():
             L = torch.relu(L_e)
             print("FIM calculation complete.")
 
-        metrics = evaluate_utility(head, test_dl, device, cli_args.noise_type, cli_args.noise_level, L, V, cli_args.lambda_factor, task_name)
+        metrics = evaluate_utility(
+            head,
+            test_dl,
+            device,
+            cli_args.noise_type,
+            cli_args.noise_level,
+            L,
+            V,
+            cli_args.lambda_factor,
+            cli_args.clip_value,
+            task_name,
+        )
         
         # Save results to a JSON file for this task
         task_output_dir = os.path.join(cli_args.output_dir, task_name)
