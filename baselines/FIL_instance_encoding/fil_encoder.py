@@ -279,15 +279,14 @@ def calc_jacobian_trace_rf(
     """
     Compute Tr(J^T J) where J = d(forward_first) / d(rf_x).
 
-    Uses JVP (Jacobian-vector products) without materialising the full Jacobian,
-    following the FIL codebase approach (util.py::calc_tr).
+    Simplest approach: for each input dimension, compute JVP for the entire
+    batch via a single forward pass (no vmap complications).
 
     Args:
         model          : FILJointEncoder (eval mode)
         rf_x           : (B,2,L) RF input on device
         cfo_x          : (B,2,160) CFO input on device (held fixed)
         channel_x      : (B,2,160) Channel input on device (held fixed)
-        jvp_parallelism: number of tangent vectors to process in parallel
         subsample      : number of input dimensions to probe (< 2*L for speed)
 
     Returns:
@@ -297,34 +296,31 @@ def calc_jacobian_trace_rf(
     cfo_x = cfo_x.float()
     channel_x = channel_x.float()
 
+    B = rf_x.shape[0]
     d = rf_x[0].flatten().shape[0]   # 2 * L
+    tr = torch.zeros(B, dtype=rf_x.dtype, device=device)
 
-    def forward_rf_only(rf):
-        return model.forward_first(rf, cfo_x, channel_x)
-
-    def jvp_func(rf, tgt):
-        return jvp(forward_rf_only, (rf,), (tgt,))
-
-    tr = torch.zeros(rf_x.shape[0], dtype=rf_x.dtype, device=device)
-
+    # Select which input dimensions to probe
     dims = random.sample(range(d), min(d, subsample)) if subsample > 0 else range(d)
 
-    for j in range(math.ceil(len(dims) / jvp_parallelism)):
-        chunk = list(dims)[j * jvp_parallelism: (j + 1) * jvp_parallelism]
-        tgts = []
-        for k in chunk:
-            tgt = torch.zeros_like(rf_x).reshape(rf_x.shape[0], -1)
-            tgt[:, k] = 1.0
-            tgts.append(tgt.reshape(rf_x.shape))
-        tgts = torch.stack(tgts)   # (chunk, B, 2, L)
+    # For each selected input dimension
+    for dim_idx in dims:
+        # Create tangent vector: (B, 2, L) with 1 at position dim_idx
+        tgt = torch.zeros_like(rf_x)
+        tgt_flat = tgt.reshape(B, -1)
+        tgt_flat[:, dim_idx] = 1.0
 
-        def helper(tgt):
-            _, grad = vmap(jvp_func, randomness='same')(rf_x, tgt)
-            return torch.sum(grad * grad, dim=tuple(range(1, len(grad.shape))))
+        # Compute JVP for the entire batch (single pass, no vmap)
+        _, grad = jvp(
+            lambda rf: model.forward_first(rf, cfo_x, channel_x),
+            (rf_x,),
+            (tgt,),
+        )
+        # grad shape: (B, latent_dim)
+        # Accumulate squared norm: per-sample sum of squares
+        tr += (grad ** 2).sum(dim=1)
 
-        trs = vmap(helper, randomness='same')(tgts)    # (chunk, B)
-        tr += trs.sum(dim=0)
-
+    # Scale if we subsampled
     if subsample > 0:
         tr *= d / len(dims)
 
