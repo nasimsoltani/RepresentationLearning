@@ -83,8 +83,12 @@ def get_args():
     p.add_argument('--model_path', required=True,
                    help='Directory with fil_args.json and fil_best.pt')
     p.add_argument('--pkl_dataset_path', required=True)
-    p.add_argument('--betas', default='0,5,10,20,50',
-                   help='Comma-separated noise levels (total variance on unit-norm activation)')
+    p.add_argument('--betas', default='',
+                   help='Comma-separated noise levels (total variance on unit-norm activation). '
+                        'Leave empty if using --target_mses.')
+    p.add_argument('--target_mses', default='',
+                   help='Comma-separated target reconstruction MSEs. If specified, β is derived '
+                        'from MSE via: β = target_MSE × mean_Tr. Overrides --betas.')
     p.add_argument('--output_path',
                    default='baselines/FIL_instance_encoding/results/fil_comparison.json')
     p.add_argument('--gpu_id',      type=int, default=0)
@@ -236,8 +240,6 @@ def main():
     device = torch.device(f'cuda:{args.gpu_id}' if torch.cuda.is_available() else 'cpu')
     print(f'Device: {device}')
 
-    betas = [float(b) for b in args.betas.split(',')]
-
     # ── Load model ─────────────────────────────────────────────────────────────
     model, model_args = load_fil_model(args.model_path, device)
     latent_dim = model.latent_dim
@@ -287,6 +289,22 @@ def main():
         num_batches=args.trace_batches,
     )
     print(f'  mean_Tr = {mean_tr:.4f},  d_input (RF) = {d_input}')
+
+    # ── Determine betas (either from --betas or derived from --target_mses) ────
+    if args.target_mses:
+        # User provided target MSEs; derive equivalent β values
+        target_mses = [float(m) for m in args.target_mses.split(',')]
+        betas = [mse * mean_tr for mse in target_mses]
+        print(f'\nDerived betas from target MSEs:')
+        for mse, beta in zip(target_mses, betas):
+            print(f'  Target MSE={mse:.6f} → β={beta:.4f}')
+    elif args.betas:
+        betas = [float(b) for b in args.betas.split(',')]
+        print(f'\nUsing specified betas: {betas}')
+    else:
+        # Default
+        betas = [0, 5, 10, 20, 50]
+        print(f'\nUsing default betas: {betas}')
 
     # ── Per-beta evaluation ────────────────────────────────────────────────────
     per_beta = {}
@@ -347,12 +365,15 @@ def main():
             'mean_tr':     mean_tr,
             'd_input_rf':  d_input,
             'timestamp':   datetime.now().isoformat(),
+            'input_mode':  'target_mses' if args.target_mses else 'betas',
+            'target_mses': args.target_mses if args.target_mses else None,
             'note': (
                 'beta is total noise variance on unit-norm activation (same as '
                 'inject_isotropic_noise in main codebase). '
                 '1/dFIL = beta / mean_Tr(J^T J). '
                 'CR bound is the Cramér-Rao lower bound on per-element MSE for '
-                'any unbiased attack.'
+                'any unbiased attack. '
+                'If input_mode=target_mses, betas were derived via: β = target_MSE × mean_Tr.'
             ),
         },
     }
