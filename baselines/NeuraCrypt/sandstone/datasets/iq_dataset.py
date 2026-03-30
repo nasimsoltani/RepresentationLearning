@@ -1,16 +1,23 @@
 """IQ Signal Datasets for NeuraCrypt benchmarking.
 
 Wraps the RF fingerprinting / CFO / channel estimation tasks from the
-Oracle dataset.  Each sample is a 2-channel IQ tensor that is first
-reshaped to a 2-D grid and then bilinearly up-sampled to (2, 256, 256)
-so that it can be fed into NeuraCrypt's PrivateEncoder unchanged
-(except for the in_channels 1 → 2 change).
+Oracle dataset.  Each sample is converted to a 2-channel spectrogram image
+(magnitude + phase) and resized to (2, 256, 256) for NeuraCrypt's
+PrivateEncoder (only change vs. original: in_channels 1 → 2).
 
-Reshape logic
-─────────────
-  RF       (2, 1024) → (2, 32, 32)  [1024 = 32²]   → (2, 256, 256)
-  CFO      (2, 160)  → (2, 13, 13)  [pad 9→169=13²] → (2, 256, 256)
-  Channel  (2, 160)  → same as CFO                  → (2, 256, 256)
+Spectrogram logic
+─────────────────
+  Complex IQ (L,) → STFT → magnitude + phase → (2, F, T) → resize (2,256,256)
+
+  RF      (2, 1024) complex: stft n_fft=64, hop=8  → (2, 33, 128) → resize
+  CFO     (2, 160)  complex: stft n_fft=32, hop=4  → (2, 17,  40) → resize
+  Channel (2, 160)  complex: same as CFO
+
+Each task forms the complex signal as  I + j*Q  and computes STFT.
+The two output channels are log-magnitude and instantaneous phase.
+This gives NeuraCrypt's patch encoder spatially meaningful local features:
+adjacent time-frequency bins are genuinely correlated, unlike the
+arbitrary reshape used before.
 """
 
 import os
@@ -99,25 +106,47 @@ def _read_file(file_path: str, mean_cfo: float, std_cfo: float):
     return RF_X, RF_y, CFO_X, CFO_y, Channel_X, Channel_y
 
 
-def _iq_to_image(x: torch.Tensor, target_size: int = IMG_SIZE) -> torch.Tensor:
-    """Reshape (2, L) IQ tensor → (2, target_size, target_size).
+def _iq_to_image(x: torch.Tensor, target_size: int = IMG_SIZE,
+                 n_fft: int = 64, hop_length: int = 8) -> torch.Tensor:
+    """Convert (2, L) IQ tensor → (2, target_size, target_size) spectrogram.
 
-    Uses nearest-square padding then bilinear upsampling so that all
-    information is preserved without any lossy transform.
+    Forms complex signal z = I + jQ, computes STFT, then returns
+    two channels: log-magnitude and instantaneous phase.  Both are
+    meaningful 2-D representations with genuine spatial locality so
+    NeuraCrypt's patch encoder can exploit local time-frequency structure.
+
+    Parameters
+    ----------
+    n_fft      : FFT size  (RF default 64 → 33 freq bins)
+    hop_length : STFT hop  (RF default 8  → 128 frames for L=1024)
     """
-    C, L = x.shape
-    side = int(np.ceil(np.sqrt(L)))
-    pad = side * side - L
-    if pad > 0:
-        x = F.pad(x, (0, pad))
-    x = x.view(C, side, side)
-    x = F.interpolate(
-        x.unsqueeze(0).float(),
+    I, Q = x[0], x[1]                             # (L,) each
+    z = torch.complex(I, Q)                        # (L,) complex
+
+    # torch.stft expects real input; we split real/imag manually
+    window = torch.hann_window(n_fft, device=x.device)
+    S = torch.stft(
+        z.real,                                    # real part only for magnitude
+        n_fft=n_fft,
+        hop_length=hop_length,
+        win_length=n_fft,
+        window=window,
+        return_complex=True,
+        pad_mode='reflect',
+        center=True,
+    )                                              # (F, T) complex
+
+    mag   = S.abs().clamp(min=1e-9).log()         # log-magnitude  (F, T)
+    phase = S.angle()                              # phase in [-π, π] (F, T)
+
+    img = torch.stack([mag, phase], dim=0).float()  # (2, F, T)
+    img = F.interpolate(
+        img.unsqueeze(0),
         size=(target_size, target_size),
         mode='bilinear',
         align_corners=False,
-    ).squeeze(0)
-    return x
+    ).squeeze(0)                                   # (2, 256, 256)
+    return img
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -217,7 +246,7 @@ class IQRFDataset(_BaseIQDataset):
         if RF_X.shape[1] < RF_SLICE_LEN:
             RF_X = F.pad(RF_X, (0, RF_SLICE_LEN - RF_X.shape[1]))
 
-        x = _iq_to_image(RF_X)
+        x = _iq_to_image(RF_X, n_fft=64, hop_length=8)   # (2,33,128) → (2,256,256)
         y = torch.tensor(RF_y, dtype=torch.long)
         return x, y
 
@@ -235,7 +264,7 @@ class IQCFODataset(_BaseIQDataset):
 
     def _get_xy(self, file_path: str):
         _, _, CFO_X, CFO_y, *_ = _read_file(file_path, self.mean_cfo, self.std_cfo)
-        x = _iq_to_image(CFO_X)
+        x = _iq_to_image(CFO_X, n_fft=32, hop_length=4)  # (2,17,40) → (2,256,256)
         y = CFO_y.view(1).float()
         return x, y
 
@@ -253,7 +282,7 @@ class IQChannelDataset(_BaseIQDataset):
 
     def _get_xy(self, file_path: str):
         *_, Channel_X, Channel_y = _read_file(file_path, 0.0, 1.0)
-        x = _iq_to_image(Channel_X)
+        x = _iq_to_image(Channel_X, n_fft=32, hop_length=4)  # (2,17,40) → (2,256,256)
         y = Channel_y.view(104).float()   # flatten (2,52) → 104 for MSE loss
         return x, y
 
@@ -328,11 +357,11 @@ class IQMTLDataset(data.Dataset):
             RF_X = F.pad(RF_X, (0, RF_SLICE_LEN - RF_X.shape[1]))
 
         return {
-            'rf_x':      _iq_to_image(RF_X),
+            'rf_x':      _iq_to_image(RF_X,      n_fft=64, hop_length=8),
             'rf_y':      torch.tensor(RF_y, dtype=torch.long),
-            'cfo_x':     _iq_to_image(CFO_X),
+            'cfo_x':     _iq_to_image(CFO_X,     n_fft=32, hop_length=4),
             'cfo_y':     CFO_y.view(1).float(),
-            'channel_x': _iq_to_image(Channel_X),
+            'channel_x': _iq_to_image(Channel_X, n_fft=32, hop_length=4),
             'channel_y': Channel_y.view(CHANNEL_OUTPUT_DIM).float(),
         }
 
