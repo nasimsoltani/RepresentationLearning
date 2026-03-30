@@ -44,6 +44,7 @@ import argparse
 import json
 import math
 import os
+import pickle
 import sys
 
 import numpy as np
@@ -218,12 +219,12 @@ def _fuse(projs: dict, task: str, fusion: str) -> torch.Tensor:
 def evaluate(model, loader, device, ta,
              sigmas: dict,    # {task: sigma}
              clip_norms: dict,  # {task: C}
+             mean_cfo: float,
+             std_cfo: float,
              n_noise: int = 5) -> dict:
     """Evaluate all three tasks, each with its own RDP noise level."""
     model.eval()
-    fusion   = getattr(ta, 'fusion_type', 'sum')
-    mean_cfo = loader.dataset.mean_cfo
-    std_cfo  = loader.dataset.std_cfo
+    fusion = getattr(ta, 'fusion_type', 'sum')
 
     rf_preds, rf_golds   = [], []
     cfo_preds, cfo_golds = [], []
@@ -345,9 +346,25 @@ def main():
 
     # ── dataset ──────────────────────────────────────────────────────────────
     print('Loading dataset...')
-    ta.pkl_dataset_path = args.pkl_dataset_path
-    val_ds  = TrainDataset(ta, 'val')
-    test_ds = TrainDataset(ta, 'test')
+    with open(args.pkl_dataset_path, 'rb') as f:
+        pkl = pickle.load(f)
+
+    val_list  = pkl['val']
+    test_list = pkl['test']
+    max_cfo   = pkl['max_cfo']
+    mean_cfo  = pkl['mean_cfo']
+    std_cfo   = pkl['std_cfo']
+
+    # Build class dict (Radio0...Radio15)
+    class_ids = {f'Radio{i}': i for i in range(16)}
+
+    # Create dataset args with slice_len
+    ds_args = argparse.Namespace(slice_len=getattr(ta, 'slice_len', 1024))
+
+    val_ds  = TrainDataset(val_list,  class_ids, ds_args, max_cfo, mean_cfo, std_cfo,
+                           test_mode=True)
+    test_ds = TrainDataset(test_list, class_ids, ds_args, max_cfo, mean_cfo, std_cfo,
+                           test_mode=True)
     val_ld  = DataLoader(val_ds,  batch_size=args.batch_size, shuffle=False,
                          num_workers=args.num_workers, pin_memory=True)
     test_ld = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False,
@@ -383,6 +400,8 @@ def main():
     baseline = evaluate(model, test_ld, device, ta,
                         sigmas=zero_sigmas,
                         clip_norms=clip_norms,
+                        mean_cfo=mean_cfo,
+                        std_cfo=std_cfo,
                         n_noise=1)
     print(f'  RF acc={baseline["rf_accuracy"]:.6f}  '
           f'CFO R²={baseline["cfo_r2"]:.6f}  '
@@ -393,6 +412,8 @@ def main():
     rdp = evaluate(model, test_ld, device, ta,
                    sigmas=sigmas,
                    clip_norms=clip_norms,
+                   mean_cfo=mean_cfo,
+                   std_cfo=std_cfo,
                    n_noise=args.n_noise_samples)
 
     # ── print table (matches your existing format) ────────────────────────────
