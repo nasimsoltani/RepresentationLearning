@@ -361,10 +361,8 @@ def main():
     # Create dataset args with slice_len
     ds_args = argparse.Namespace(slice_len=getattr(ta, 'slice_len', 1024))
 
-    val_ds  = TrainDataset(val_list,  class_ids, ds_args, max_cfo, mean_cfo, std_cfo,
-                           test_mode=True)
-    test_ds = TrainDataset(test_list, class_ids, ds_args, max_cfo, mean_cfo, std_cfo,
-                           test_mode=True)
+    val_ds  = TrainDataset(val_list,  class_ids, ds_args, max_cfo, mean_cfo, std_cfo)
+    test_ds = TrainDataset(test_list, class_ids, ds_args, max_cfo, mean_cfo, std_cfo)
     val_ld  = DataLoader(val_ds,  batch_size=args.batch_size, shuffle=False,
                          num_workers=args.num_workers, pin_memory=True)
     test_ld = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False,
