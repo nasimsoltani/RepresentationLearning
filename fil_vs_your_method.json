@@ -1,0 +1,96 @@
+{
+  "betas": [
+    0.4355838167667389,
+    0.5081811195611954,
+    0.5807784223556519,
+    0.6533757251501084,
+    0.7259730279445649
+  ],
+  "per_beta": {
+    "0.4355838167667389": {
+      "cr_bound": {
+        "1_over_dfil": 0.3,
+        "mse_lower_bound": 0.3,
+        "mean_tr": 1.4519460558891297
+      },
+      "utility": {
+        "rf_acc": 0.8933919022154316,
+        "cfo_mse": 0.46346497535705566,
+        "cfo_r2": 0.572536826133728,
+        "channel_mse": 0.059481073170900345,
+        "channel_r2": 0.8810373544692993
+      },
+      "privacy": {}
+    },
+    "0.5081811195611954": {
+      "cr_bound": {
+        "1_over_dfil": 0.35,
+        "mse_lower_bound": 0.35,
+        "mean_tr": 1.4519460558891297
+      },
+      "utility": {
+        "rf_acc": 0.8914820473644003,
+        "cfo_mse": 0.4661753475666046,
+        "cfo_r2": 0.5700370073318481,
+        "channel_mse": 0.06959327310323715,
+        "channel_r2": 0.8608128428459167
+      },
+      "privacy": {}
+    },
+    "0.5807784223556519": {
+      "cr_bound": {
+        "1_over_dfil": 0.4,
+        "mse_lower_bound": 0.4,
+        "mean_tr": 1.4519460558891297
+      },
+      "utility": {
+        "rf_acc": 0.8893812070282658,
+        "cfo_mse": 0.46467456221580505,
+        "cfo_r2": 0.5714212656021118,
+        "channel_mse": 0.0805056020617485,
+        "channel_r2": 0.8389881253242493
+      },
+      "privacy": {}
+    },
+    "0.6533757251501084": {
+      "cr_bound": {
+        "1_over_dfil": 0.45000000000000007,
+        "mse_lower_bound": 0.45000000000000007,
+        "mean_tr": 1.4519460558891297
+      },
+      "utility": {
+        "rf_acc": 0.8868983957219251,
+        "cfo_mse": 0.4712320566177368,
+        "cfo_r2": 0.5653731226921082,
+        "channel_mse": 0.0905129685997963,
+        "channel_r2": 0.8189733028411865
+      },
+      "privacy": {}
+    },
+    "0.7259730279445649": {
+      "cr_bound": {
+        "1_over_dfil": 0.5,
+        "mse_lower_bound": 0.5,
+        "mean_tr": 1.4519460558891297
+      },
+      "utility": {
+        "rf_acc": 0.88353705118411,
+        "cfo_mse": 0.4670179486274719,
+        "cfo_r2": 0.5692598819732666,
+        "channel_mse": 0.10091372579336166,
+        "channel_r2": 0.7981716990470886
+      },
+      "privacy": {}
+    }
+  },
+  "metadata": {
+    "model_path": "/scratch/10608/aadharsh_aadhithya/results/models/fil_joint_1",
+    "latent_dim": 256,
+    "mean_tr": 1.4519460558891297,
+    "d_input_rf": 2048,
+    "timestamp": "2026-03-29T21:08:24.212046",
+    "input_mode": "target_mses",
+    "target_mses": "0.3,0.35,0.4,0.45,0.5",
+    "note": "beta is total noise variance on unit-norm activation (same as inject_isotropic_noise in main codebase). 1/dFIL = beta / mean_Tr(J^T J). CR bound is the Cram\u00e9r-Rao lower bound on per-element MSE for any unbiased attack. If input_mode=target_mses, betas were derived via: \u03b2 = target_MSE \u00d7 mean_Tr."
+  }
+}

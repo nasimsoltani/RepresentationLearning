@@ -47,7 +47,10 @@ def compute_epoch_metrics(result_dict, args, device, key_prefix = ""):
 
 
     additional_metrics = []
-    if args.num_classes > 1 and 'probs' in result_dict_wo_key_prefix:
+    if getattr(args, 'regression', False):
+        if 'pred' in result_dict_wo_key_prefix and 'golds' in result_dict_wo_key_prefix:
+            additional_metrics = ['r2_score']
+    elif args.num_classes > 1 and 'probs' in result_dict_wo_key_prefix:
         additional_metrics = ['classification']
 
     for metric_name in additional_metrics:

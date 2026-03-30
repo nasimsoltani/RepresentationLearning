@@ -10,7 +10,9 @@ from sandstone.utils.distributed_weighted_sampler import DistributedWeightedSamp
 import hashlib
 import random
 from collections import defaultdict
-from torch._six import container_abcs, string_classes, int_classes
+import collections.abc as container_abcs
+string_classes = (str,)
+int_classes    = (int,)
 import re
 import pickle
 

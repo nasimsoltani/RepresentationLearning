@@ -1,0 +1,26 @@
+{
+  "search_space": {
+    "train":           [true],
+    "test":            [true],
+    "private":         [true],
+    "dataset":         ["iq_rf_fingerprinting"],
+    "model_name":      ["reference_transformer"],
+    "batch_size":      [128],
+    "num_chan":         [2],
+    "img_size":        [[256, 256]],
+    "hidden_dim":      [2048],
+    "num_layers":      [1],
+    "num_heads":       [8],
+    "private_kernel_size": [16],
+    "private_depth":   [4],
+    "num_classes":     [16],
+    "init_lr":         [0.001],
+    "max_epochs":      [50],
+    "gpus":            [1],
+    "num_workers":     [8],
+    "class_bal":       [true],
+    "tuning_metric":   ["accuracy"],
+    "cross_val_seed":  [0]
+  },
+  "available_gpus": [0]
+}

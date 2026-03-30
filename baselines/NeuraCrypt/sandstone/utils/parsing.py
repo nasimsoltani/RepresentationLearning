@@ -186,6 +186,12 @@ def parse_args(args_strings=None):
     parser.add_argument('--inflate_time_like_hw', action='store_true', default=False, help='Inflate time depths and strides like 2d')
 
 
+    # IQ benchmark args
+    parser.add_argument('--pkl_dataset_path', type=str, default='dataset/rf_partition_dict_0.5.pkl',
+                        help='Path to the RF partition pickle (used by iq_* datasets).')
+    parser.add_argument('--regression', action='store_true', default=False,
+                        help='If true, use MSE loss and R\u00b2 metric instead of cross-entropy / accuracy.')
+
     parser.add_argument('--metadata_dir', type=str, default='', help='dir of metadata jsons.')
     parser.add_argument('--cache_path', type=str, default=None, help='dir to cache images.')
     parser.add_argument('--cache_full_img', action='store_true', default=False, help='Cache full image locally as well as cachable transforms')

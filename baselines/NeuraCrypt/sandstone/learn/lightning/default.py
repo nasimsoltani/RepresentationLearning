@@ -149,9 +149,8 @@ class Sandstone(pl.LightningModule):
     def get_loss_functions(self, args):
         if hasattr(self.model, "get_loss_functions"):
             return self.model.get_loss_functions(args)
-        loss_fns =  ['mse'] if args.num_classes == 1 \
-                    else ['cross_entropy']
-
+        use_mse = args.num_classes == 1 or getattr(args, 'regression', False)
+        loss_fns = ['mse'] if use_mse else ['cross_entropy']
         return loss_fns
 
 def prefix_dict(d, prefix):
