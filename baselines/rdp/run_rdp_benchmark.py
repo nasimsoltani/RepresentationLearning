@@ -224,6 +224,14 @@ def evaluate(model, loader, device, ta,
              n_noise: int = 5) -> dict:
     """Evaluate all three tasks, each with its own RDP noise level."""
     model.eval()
+    # CFO head uses BatchNorm1d which in eval mode relies on running stats from
+    # clean training data.  Under large RDP noise the input distribution shifts
+    # dramatically, causing each BN layer to amplify noise rather than normalise
+    # it, leading to catastrophic R² degradation.  Setting the CFO head to train
+    # mode makes BN compute statistics from the current (noisy) batch, matching
+    # the actual distribution and suppressing amplification.
+    if 'cfo_estimation' in model['heads']:
+        model['heads']['cfo_estimation'].train()
     fusion = getattr(ta, 'fusion_type', 'sum')
 
     rf_preds, rf_golds   = [], []
