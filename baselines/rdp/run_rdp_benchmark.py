@@ -218,19 +218,28 @@ def _fuse(projs: dict, task: str, fusion: str) -> torch.Tensor:
     return p
 
 
-def _cfo_bn_disable_running_stats(head: nn.Module):
-    """Use per-batch BN stats without updating running buffers (for noisy enc inputs)."""
+def _freeze_bn_for_noisy_eval(module: nn.Module):
+    """Force all BN layers to use per-batch stats without corrupting stored running stats.
+
+    When RDP noise makes the encoder output distribution differ drastically from training,
+    eval-mode BN (which uses stored running mean/var) mis-normalizes and amplifies noise.
+    We need train-mode BN (batch stats) but must prevent it from overwriting the stored
+    running buffers.  Setting momentum=0 achieves this: new_running = (1-momentum)*old + ...
+    with momentum=0 → running stats stay unchanged.
+    """
     saved = []
-    for m in head.modules():
+    for m in module.modules():
         if isinstance(m, nn.BatchNorm1d):
-            saved.append((m, m.track_running_stats))
-            m.track_running_stats = False
+            saved.append((m, m.training, m.momentum))
+            m.train()
+            m.momentum = 0.0
     return saved
 
 
-def _cfo_bn_restore_running_stats(saved: list) -> None:
-    for m, prev in saved:
-        m.track_running_stats = prev
+def _restore_bn(saved: list) -> None:
+    for m, was_training, prev_momentum in saved:
+        m.momentum = prev_momentum
+        m.train(was_training)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -246,14 +255,12 @@ def evaluate(model, loader, device, ta,
              n_noise: int = 5) -> dict:
     """Evaluate all three tasks, each with its own RDP noise level."""
     model.eval()
-    # CFO head may use BatchNorm1d.  Eval mode + running stats from clean training
-    # mis-normalizes noisy encoder inputs; train() fixes batch stats but corrupts
-    # running buffers.  Use batch statistics only (track_running_stats=False)
-    # without updating stored running mean/var.
-    bn_saved = []
-    if 'cfo_estimation' in model['heads']:
-        bn_saved = _cfo_bn_disable_running_stats(
-            model['heads']['cfo_estimation'])
+    # Task heads (especially CFO) contain BatchNorm1d.  In eval mode BN uses stored
+    # running stats from clean training, but under heavy RDP noise the head input
+    # distribution shifts drastically, causing BN to amplify noise.  Switch head BN
+    # layers to train mode (batch stats) with momentum=0 so running buffers are not
+    # overwritten.  The encoder BN is unaffected — it runs on clean projections.
+    bn_saved = _freeze_bn_for_noisy_eval(model['heads'])
     fusion = getattr(ta, 'fusion_type', 'sum')
 
     rf_preds, rf_golds   = [], []
@@ -326,7 +333,7 @@ def evaluate(model, loader, device, ta,
                 multioutput='uniform_average') if ch_preds else float('nan'),
         }
     finally:
-        _cfo_bn_restore_running_stats(bn_saved)
+        _restore_bn(bn_saved)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
