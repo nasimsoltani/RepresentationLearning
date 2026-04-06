@@ -16,7 +16,7 @@ Math (FIL Appendix A.5 + Mironov 2017):
   (2,ε)-RDP Gaussian noise std (Mironov 2017, L2-sensitivity = 2C):
       σ  =  2C / √ε       [i.e. σ² = (2C)²/ε]
 
-  Enc_RDP(x)  =  Enc(x) / max(1, ‖Enc(x)‖/C)  +  N(0, σ²·I)
+  Enc_RDP(x)  =  clip_flat(Enc(x), C)  +  N(0, σ²·I)   on vec(Enc) ∈ ℝ^{2·d2}
 
 Split point: shared rep_lr encoder output (B, 2·d2), before task heads.
 
@@ -83,10 +83,16 @@ def epsilon_to_sigma(eps: float, C: float) -> float:
 
 @torch.no_grad()
 def apply_rdp(enc: torch.Tensor, C: float, sigma: float) -> torch.Tensor:
-    """Clip to L2-norm C, add N(0, σ²·I)."""
-    norms   = enc.norm(dim=-1, keepdim=True).clamp(min=1e-9)
-    clipped = enc / torch.clamp(norms / C, min=1.0)
-    return clipped + torch.randn_like(clipped) * sigma
+    """L2-clip the flattened encoder output to norm C, then add isotropic Gaussian noise.
+
+    Encoder output is (B, 2, d2); RDP is applied on vec(enc) ∈ ℝ^{2·d2} so C and σ
+    match the FIL / Mironov sensitivity on the full representation vector.
+    """
+    flat    = enc.reshape(enc.size(0), -1)
+    norms   = flat.norm(dim=-1, keepdim=True).clamp(min=1e-9)
+    clipped = flat / torch.clamp(norms / C, min=1.0)
+    noisy   = clipped + torch.randn_like(clipped) * sigma
+    return noisy.view_as(enc)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -172,7 +178,7 @@ TASK_X_IDX = {
 @torch.no_grad()
 def estimate_clip_norms(model, loader, device,
                         percentile=95.0, fusion='sum') -> dict:
-    """Return {task: C} where C is the p-th percentile of encoder norms."""
+    """Return {task: C} where C is the p-th percentile of ‖vec(enc)‖₂ (full vector)."""
     model.eval()
     norms_by_task = {t: [] for t in TASK_X_IDX if t in model['projections']}
 
@@ -187,7 +193,8 @@ def estimate_clip_norms(model, loader, device,
         for task, p in projs.items():
             fused = _fuse(projs, task, fusion)
             enc   = model['encoder'](fused)
-            norms_by_task[task].append(enc.norm(dim=-1).cpu())
+            flat  = enc.reshape(enc.size(0), -1)
+            norms_by_task[task].append(flat.norm(dim=-1).cpu())
 
     result = {}
     for task, ns in norms_by_task.items():
@@ -211,6 +218,21 @@ def _fuse(projs: dict, task: str, fusion: str) -> torch.Tensor:
     return p
 
 
+def _cfo_bn_disable_running_stats(head: nn.Module):
+    """Use per-batch BN stats without updating running buffers (for noisy enc inputs)."""
+    saved = []
+    for m in head.modules():
+        if isinstance(m, nn.BatchNorm1d):
+            saved.append((m, m.track_running_stats))
+            m.track_running_stats = False
+    return saved
+
+
+def _cfo_bn_restore_running_stats(saved: list) -> None:
+    for m, prev in saved:
+        m.track_running_stats = prev
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Evaluation — one noise level per task
 # ══════════════════════════════════════════════════════════════════════════════
@@ -224,84 +246,87 @@ def evaluate(model, loader, device, ta,
              n_noise: int = 5) -> dict:
     """Evaluate all three tasks, each with its own RDP noise level."""
     model.eval()
-    # CFO head uses BatchNorm1d which in eval mode relies on running stats from
-    # clean training data.  Under large RDP noise the input distribution shifts
-    # dramatically, causing each BN layer to amplify noise rather than normalise
-    # it, leading to catastrophic R² degradation.  Setting the CFO head to train
-    # mode makes BN compute statistics from the current (noisy) batch, matching
-    # the actual distribution and suppressing amplification.
+    # CFO head may use BatchNorm1d.  Eval mode + running stats from clean training
+    # mis-normalizes noisy encoder inputs; train() fixes batch stats but corrupts
+    # running buffers.  Use batch statistics only (track_running_stats=False)
+    # without updating stored running mean/var.
+    bn_saved = []
     if 'cfo_estimation' in model['heads']:
-        model['heads']['cfo_estimation'].train()
+        bn_saved = _cfo_bn_disable_running_stats(
+            model['heads']['cfo_estimation'])
     fusion = getattr(ta, 'fusion_type', 'sum')
 
     rf_preds, rf_golds   = [], []
     cfo_preds, cfo_golds = [], []
     ch_preds,  ch_golds  = [], []
 
-    for batch in tqdm(loader, desc='  evaluating', leave=False):
-        RF_X  = batch[0].to(device).float()
-        RF_y  = batch[1]
-        CFO_X = batch[2].to(device).float()
-        CFO_y = batch[3]
-        CH_X  = batch[4].to(device).float()
-        CH_y  = batch[5]
+    try:
+        for batch in tqdm(loader, desc='  evaluating', leave=False):
+            RF_X  = batch[0].to(device).float()
+            RF_y  = batch[1]
+            CFO_X = batch[2].to(device).float()
+            CFO_y = batch[3]
+            CH_X  = batch[4].to(device).float()
+            CH_y  = batch[5]
 
-        projs = {}
-        for task, x in [('rf_fingerprinting', RF_X),
-                         ('cfo_estimation',    CFO_X),
-                         ('channel_estimation', CH_X)]:
-            if task in model['projections']:
-                projs[task] = model['projections'][task](x)
+            projs = {}
+            for task, x in [('rf_fingerprinting', RF_X),
+                            ('cfo_estimation',    CFO_X),
+                            ('channel_estimation', CH_X)]:
+                if task in model['projections']:
+                    projs[task] = model['projections'][task](x)
 
-        # Accumulate predictions over n_noise draws
-        rf_acc  = torch.zeros(RF_X.size(0), 16, device=device)
-        cfo_acc = torch.zeros(CFO_X.size(0), 1,  device=device)
-        ch_acc  = None
+            # Accumulate predictions over n_noise draws
+            rf_acc  = torch.zeros(RF_X.size(0), 16, device=device)
+            cfo_acc = torch.zeros(CFO_X.size(0), 1,  device=device)
+            ch_acc  = None
 
-        for _ in range(n_noise):
-            for task, p in projs.items():
-                fused    = _fuse(projs, task, fusion)
-                enc      = model['encoder'](fused)
-                C        = clip_norms[task]
-                sigma    = sigmas[task]
-                enc_noisy = apply_rdp(enc, C, sigma)
-                out      = model['heads'][task](enc_noisy)
+            for _ in range(n_noise):
+                for task, p in projs.items():
+                    fused     = _fuse(projs, task, fusion)
+                    enc       = model['encoder'](fused)
+                    C         = clip_norms[task]
+                    sigma     = sigmas[task]
+                    enc_noisy = apply_rdp(enc, C, sigma)
+                    out       = model['heads'][task](enc_noisy)
 
-                if task == 'rf_fingerprinting':
-                    rf_acc  += out
-                elif task == 'cfo_estimation':
-                    cfo_acc += out
-                elif task == 'channel_estimation':
-                    if ch_acc is None:
-                        ch_acc = torch.zeros_like(out)
-                    ch_acc += out
+                    if task == 'rf_fingerprinting':
+                        rf_acc  += out
+                    elif task == 'cfo_estimation':
+                        cfo_acc += out
+                    elif task == 'channel_estimation':
+                        if ch_acc is None:
+                            ch_acc = torch.zeros_like(out)
+                        ch_acc += out
 
-        rf_acc  /= n_noise
-        cfo_acc /= n_noise
-        if ch_acc is not None:
-            ch_acc /= n_noise
+            rf_acc  /= n_noise
+            cfo_acc /= n_noise
+            if ch_acc is not None:
+                ch_acc /= n_noise
 
-        rf_preds.append(rf_acc.argmax(1).cpu().numpy())
-        rf_golds.append(RF_y.numpy())
+            rf_preds.append(rf_acc.argmax(1).cpu().numpy())
+            rf_golds.append(RF_y.numpy())
 
-        cfo_pred_d = cfo_acc.cpu().numpy().ravel() * std_cfo + mean_cfo
-        cfo_true_d = CFO_y.numpy().ravel()          * std_cfo + mean_cfo
-        cfo_preds.append(cfo_pred_d)
-        cfo_golds.append(cfo_true_d)
+            cfo_pred_d = cfo_acc.cpu().numpy().ravel() * std_cfo + mean_cfo
+            cfo_true_d = CFO_y.numpy().ravel()          * std_cfo + mean_cfo
+            cfo_preds.append(cfo_pred_d)
+            cfo_golds.append(cfo_true_d)
 
-        if ch_acc is not None:
-            ch_preds.append(ch_acc.cpu().numpy().reshape(len(CH_X), -1))
-            ch_golds.append(CH_y.numpy().reshape(len(CH_X), -1))
+            if ch_acc is not None:
+                ch_preds.append(ch_acc.cpu().numpy().reshape(len(CH_X), -1))
+                ch_golds.append(CH_y.numpy().reshape(len(CH_X), -1))
 
-    return {
-        'rf_accuracy': accuracy_score(
-            np.concatenate(rf_golds), np.concatenate(rf_preds)),
-        'cfo_r2': r2_score(
-            np.concatenate(cfo_golds), np.concatenate(cfo_preds)),
-        'channel_r2': r2_score(
-            np.concatenate(ch_golds), np.concatenate(ch_preds),
-            multioutput='uniform_average') if ch_preds else float('nan'),
-    }
+        return {
+            'rf_accuracy': accuracy_score(
+                np.concatenate(rf_golds), np.concatenate(rf_preds)),
+            'cfo_r2': r2_score(
+                np.concatenate(cfo_golds), np.concatenate(cfo_preds)),
+            'channel_r2': r2_score(
+                np.concatenate(ch_golds), np.concatenate(ch_preds),
+                multioutput='uniform_average') if ch_preds else float('nan'),
+        }
+    finally:
+        _cfo_bn_restore_running_stats(bn_saved)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
