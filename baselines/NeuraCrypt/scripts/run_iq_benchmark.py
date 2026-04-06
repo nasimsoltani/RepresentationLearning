@@ -24,6 +24,12 @@ Usage (from repo root)::
         --gpu_id 0 \\
         --epochs 50
 
+    # One run directory (checkpoints in RUN/snapshots, JSON in RUN/results):
+    python baselines/NeuraCrypt/scripts/run_iq_benchmark.py \\
+        --pkl_dataset_path dataset/rf_partition_dict_0.5.pkl \\
+        --output_dir baselines/NeuraCrypt/runs/exp1 \\
+        --gpu_id 0
+
     # Single-task ablation (optional, not the primary comparison):
     python baselines/NeuraCrypt/scripts/run_iq_benchmark.py \\
         --mode single_task --pkl_dataset_path ...
@@ -47,10 +53,12 @@ NEURACRYPT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(NEURACRYPT_ROOT))
 
 from sandstone.datasets.iq_dataset import (
+    CFO_CHANNEL_LEN,
     IQChannelDataset,
     IQCFODataset,
     IQMTLDataset,
     IQRFDataset,
+    RF_SLICE_LEN,
 )
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -103,13 +111,13 @@ class PrivateEncoder(nn.Module):
         enc = enc + self.pos_embedding
         enc = self.mixer(enc)                           # (B, N, hidden_dim)
 
-        # Per-sample random pixel shuffle — the key NeuraCrypt privacy mechanism
+        # Per-sample random patch shuffle — the key NeuraCrypt privacy mechanism
         if not getattr(self.args, 'remove_pixel_shuffle', False):
-            shuffled = torch.zeros_like(enc)
-            for i in range(B):
-                idx = torch.randperm(H * W, device=enc.device)
-                shuffled[i] = enc[i][idx]
-            enc = shuffled
+            N, D = H * W, enc.size(-1)
+            keys = torch.rand(B, N, device=enc.device)
+            idx = torch.argsort(keys, dim=1)
+            enc = torch.gather(
+                enc, 1, idx.unsqueeze(-1).expand(B, N, D))
         return enc
 
 
@@ -550,10 +558,11 @@ def train_single_task(task: str, args) -> dict:
 #   Kaiming init, LeakyReLU(0.01), Dropout(0.2), no final activation
 #   MSE loss, Adam(lr=1e-3, wd=1e-5), CosineAnnealingLR
 #
-# The only NeuraCrypt-specific adaptation:
-#   • input  = mean-pooled tokens  (B, 256, 2048) → (B, 2048)
-#   • target = the image fed to the encoder (B, 2, 256, 256)
-#     because that is NeuraCrypt's actual "encoded input"
+# NeuraCrypt-specific details (aligned with rep_lr / code/dra):
+#   • input  = mean-pooled private tokens  (B, N, D) → mean → (B, D)
+#   • target = raw IQ for that task (B, 2, L) — same reconstruction target as rep_lr
+#   • encoder input remains the spectrogram image; attack measures whether latent
+#     leaks the underlying IQ (fair vs rep_lr adversary).
 # ══════════════════════════════════════════════════════════════════════════════
 
 class _SimpleAdversary(nn.Module):
@@ -605,10 +614,11 @@ def run_adversary_attack(model: MTLNeuraCrypt,
                          adv_dropout: float = 0.2) -> dict:
     """Train one SimpleAdversary per task and report reconstruction MSE.
 
-    For each task the adversary sees mean-pooled NeuraCrypt tokens and must
-    reconstruct the image that was passed into the private encoder.
-    This matches the rep_lr adversary setup (same architecture, same loss,
-    same optimizer/scheduler) while targeting NeuraCrypt's actual input.
+    For each task the adversary sees mean-pooled private-encoder tokens and must
+    reconstruct the **raw IQ** tensor (same target space as ``code/dra`` /
+    rep_lr), while the encoder still consumes the spectrogram image. This keeps
+    the privacy metric comparable to your main pipeline without the huge
+    (2,256,256) reconstruction head.
 
     Returns
     -------
@@ -623,44 +633,52 @@ def run_adversary_attack(model: MTLNeuraCrypt,
     print('  Adversary Reconstruction Attack  (mirrors code/dra setup)')
     print('='*60)
 
-    # image shape fed into the private encoder
-    img_shape = (2, 256, 256)    # (C, H, W)
+    # Raw IQ shapes (must match iq_dataset + rep_lr dra targets)
+    task_target_shapes = {
+        'rf':      (2, RF_SLICE_LEN),
+        'cfo':     (2, CFO_CHANNEL_LEN),
+        'channel': (2, CFO_CHANNEL_LEN),
+    }
     # pooled token dim after mean over patch dim
     token_dim = model.encoder.pos_embedding.shape[-1]  # hidden_dim
 
     task_keys = {
-        'rf':      ('rf_x',      'rf_accuracy'),
-        'cfo':     ('cfo_x',     'cfo_r2'),
-        'channel': ('channel_x', 'channel_r2'),
+        'rf':      ('rf_x', 'rf_iq', 'rf_accuracy'),
+        'cfo':     ('cfo_x', 'cfo_iq', 'cfo_r2'),
+        'channel': ('channel_x', 'channel_iq', 'channel_r2'),
     }
 
     results = {}
 
-    for task_name, (img_key, util_key) in task_keys.items():
+    for task_name, (img_key, iq_key, util_key) in task_keys.items():
         print(f'\n  Task: {task_name}')
 
-        # ── collect (pooled_token, image) pairs ─────────────────────────────
-        @torch.no_grad()
-        def _collect(loader, key=img_key):
-            zs, imgs = [], []
-            for batch in loader:
-                x = batch[key].to(device)               # (B, 2, 256, 256)
-                tokens = model.encode(x)                 # (B, 256, hidden_dim)
-                z = tokens.mean(dim=1)                   # (B, hidden_dim)
-                zs.append(z.cpu());  imgs.append(x.cpu())
-            return torch.cat(zs), torch.cat(imgs)
+        tgt_shape = task_target_shapes[task_name]
 
-        z_train, img_train = _collect(train_ld)
-        z_test,  img_test  = _collect(test_ld)
+        # ── collect (pooled_token, raw IQ) pairs ────────────────────────────
+        @torch.no_grad()
+        def _collect(loader):
+            zs, tgts = [], []
+            for batch in loader:
+                x = batch[img_key].to(device)           # (B, 2, 256, 256)
+                iq = batch[iq_key]                       # (B, 2, L)
+                tokens = model.encode(x)                 # (B, N, hidden_dim)
+                z = tokens.mean(dim=1)                   # (B, hidden_dim)
+                zs.append(z.cpu())
+                tgts.append(iq.float().cpu())
+            return torch.cat(zs), torch.cat(tgts)
+
+        z_train, tgt_train = _collect(train_ld)
+        z_test,  tgt_test  = _collect(test_ld)
 
         from torch.utils.data import TensorDataset
-        tr_ds = TensorDataset(z_train, img_train)
-        te_ds = TensorDataset(z_test,  img_test)
+        tr_ds = TensorDataset(z_train, tgt_train)
+        te_ds = TensorDataset(z_test,  tgt_test)
         tr_ld_adv = DataLoader(tr_ds, batch_size=64, shuffle=True,  pin_memory=True)
         te_ld_adv = DataLoader(te_ds, batch_size=64, shuffle=False, pin_memory=True)
 
         # ── build adversary ─────────────────────────────────────────────────
-        adv = _SimpleAdversary(token_dim, img_shape,
+        adv = _SimpleAdversary(token_dim, tgt_shape,
                                hidden_dim=adv_hidden,
                                dropout=adv_dropout).to(device)
         n_params = sum(p.numel() for p in adv.parameters())
@@ -673,9 +691,10 @@ def run_adversary_attack(model: MTLNeuraCrypt,
         best_mse = float('inf')
         for epoch in range(1, adv_epochs + 1):
             adv.train()
-            for z_b, img_b in tr_ld_adv:
-                z_b   = z_b.to(device);  img_b = img_b.to(device)
-                loss  = crit(adv(z_b), img_b)
+            for z_b, tgt_b in tr_ld_adv:
+                z_b = z_b.to(device)
+                tgt_b = tgt_b.to(device)
+                loss = crit(adv(z_b), tgt_b)
                 opt.zero_grad(); loss.backward(); opt.step()
             sched.step()
 
@@ -683,9 +702,10 @@ def run_adversary_attack(model: MTLNeuraCrypt,
                 adv.eval()
                 with torch.no_grad():
                     mse_sum, n = 0.0, 0
-                    for z_b, img_b in te_ld_adv:
-                        z_b = z_b.to(device); img_b = img_b.to(device)
-                        mse_sum += crit(adv(z_b), img_b).item() * z_b.size(0)
+                    for z_b, tgt_b in te_ld_adv:
+                        z_b = z_b.to(device)
+                        tgt_b = tgt_b.to(device)
+                        mse_sum += crit(adv(z_b), tgt_b).item() * z_b.size(0)
                         n += z_b.size(0)
                 test_mse = mse_sum / n
                 best_mse = min(best_mse, test_mse)
@@ -714,15 +734,37 @@ def run_adversary_attack(model: MTLNeuraCrypt,
 # ══════════════════════════════════════════════════════════════════════════════
 
 def parse_args():
-    p = argparse.ArgumentParser()
+    p = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Outputs:
+  --save_dir     Checkpoint: neuracrypt_mtl_best.pt (and single-task ckpts)
+  --results_dir  JSON summary: neuracrypt_results.json
+
+Comparing to RDP / noise injection (baselines/rdp/run_rdp_benchmark.py):
+  • Use the same --pkl_dataset_path and test split.
+  • Utility: compare RF accuracy, CFO R², channel R² (NeuraCrypt summary vs RDP rdp/baseline).
+  • Privacy: NeuraCrypt reports empirical recon_mse per task (from the adversary on raw IQ).
+    RDP fixes noise from target MSE (often your rep_lr measured MSE); calibrate noise to a
+    chosen target_mse_* or compare utility at similar recon leakage if you align targets.
+  • Methods differ (frozen private encoder vs trained encoder + Gaussian noise); compare
+    tradeoff curves (utility vs recon MSE / epsilon), not a single scalar.
+""",
+    )
     p.add_argument('--mode', choices=['mtl', 'single_task', 'both'],
                    default='mtl',
                    help='mtl = fair comparison (default); '
                         'single_task = ablation; both = run both')
     p.add_argument('--pkl_dataset_path',
                    default='dataset/rf_partition_dict_0.5.pkl')
-    p.add_argument('--save_dir',    default='baselines/NeuraCrypt/snapshots_iq')
-    p.add_argument('--results_dir', default='baselines/NeuraCrypt/results_iq')
+    p.add_argument(
+        '--output_dir', default=None,
+        help='Optional run root: checkpoints → OUTPUT_DIR/snapshots, '
+             'JSON → OUTPUT_DIR/results (overrides --save_dir and --results_dir).')
+    p.add_argument('--save_dir',    default='baselines/NeuraCrypt/snapshots_iq',
+                   help='Where to write neuracrypt_mtl_best.pt (ignored if --output_dir set).')
+    p.add_argument('--results_dir', default='baselines/NeuraCrypt/results_iq',
+                   help='Where to write neuracrypt_results.json (ignored if --output_dir set).')
     p.add_argument('--gpu_id',      type=int, default=0)
     p.add_argument('--epochs',      type=int, default=50)
     p.add_argument('--batch_size',  type=int, default=128)
@@ -741,7 +783,11 @@ def parse_args():
                         '(matches rep_lr dra default of 50)')
     p.add_argument('--skip_adversary', action='store_true',
                    help='Skip adversary attack (faster, utility metrics only)')
-    return p.parse_args()
+    args = p.parse_args()
+    if args.output_dir:
+        args.save_dir = os.path.join(args.output_dir, 'snapshots')
+        args.results_dir = os.path.join(args.output_dir, 'results')
+    return args
 
 
 def main():
@@ -833,7 +879,7 @@ def main():
         for t, v in out['privacy_utility'].items():
             print(f'  {t:<10} {v["recon_mse"]:>22.6f}   {v["utility"]:>10.6f}')
         print()
-        print('  rep_lr reference:')
+        print('  rep_lr reference (raw IQ recon MSE vs pooled latent):')
         print('  rf         0.500941              0.518564')
         print('  cfo        0.345215              0.307801')
         print('  channel    0.337255              0.405239')

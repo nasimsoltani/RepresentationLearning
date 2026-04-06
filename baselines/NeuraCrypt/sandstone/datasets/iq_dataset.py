@@ -9,9 +9,9 @@ Spectrogram logic
 ─────────────────
   Complex IQ (L,) → STFT → magnitude + phase → (2, F, T) → resize (2,256,256)
 
-  RF      (2, 1024) complex: stft n_fft=64, hop=8  → (2, 33, 128) → resize
-  CFO     (2, 160)  complex: stft n_fft=32, hop=4  → (2, 17,  40) → resize
-  Channel (2, 160)  complex: same as CFO
+  RF      (2, 1024): complex STFT n_fft=64, hop=8  → (2, F, T) → resize
+  CFO/Ch  (2, 160):  complex STFT n_fft=32, hop=4 → (2, F, T) → resize
+  (F depends on onesided/complex STFT; bilinear resize fixes to 256×256.)
 
 Each task forms the complex signal as  I + j*Q  and computes STFT.
 The two output channels are log-magnitude and instantaneous phase.
@@ -20,12 +20,11 @@ adjacent time-frequency bins are genuinely correlated, unlike the
 arbitrary reshape used before.
 """
 
-import os
+import logging
 import random
 import pickle
 from collections import Counter
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils import data
@@ -33,8 +32,11 @@ from scipy.io import loadmat
 
 from sandstone.datasets.factory import RegisterDataset
 
+logger = logging.getLogger(__name__)
+
 IMG_SIZE = 256
 RF_SLICE_LEN = 1024
+CFO_CHANNEL_LEN = 160
 
 # Channel output is (2, 52) = 104 elements
 CHANNEL_OUTPUT_DIM = 104
@@ -78,7 +80,7 @@ def _read_file(file_path: str, mean_cfo: float, std_cfo: float):
     parts = [p for p in parts if p]
     filename = parts[-1]
     dir_parts = parts[:-1]
-    suffix = filename.lstrip('RFfingerprinting')
+    suffix = filename.removeprefix('RFfingerprinting')
 
     def sibling_path(prefix):
         return '/' + '/'.join(dir_parts) + '/' + prefix + suffix
@@ -97,7 +99,7 @@ def _read_file(file_path: str, mean_cfo: float, std_cfo: float):
     CFO_input   = _rms_normalize(CFO_input)
 
     RF_X     = _to_iq(RF_input)
-    RF_y     = int(RF_output.lstrip('Radio'))
+    RF_y     = int(str(RF_output).removeprefix('Radio'))
     CFO_X    = _to_iq(CFO_input)
     CFO_y    = ((CFO_output - mean_cfo) / std_cfo).float()
     Channel_X = _to_iq(Channel_input)
@@ -121,12 +123,12 @@ def _iq_to_image(x: torch.Tensor, target_size: int = IMG_SIZE,
     hop_length : STFT hop  (RF default 8  → 128 frames for L=1024)
     """
     I, Q = x[0], x[1]                             # (L,) each
-    z = torch.complex(I, Q)                        # (L,) complex
+    z = torch.complex(I.to(torch.float32), Q.to(torch.float32))  # (L,) complex
 
-    # torch.stft expects real input; we split real/imag manually
-    window = torch.hann_window(n_fft, device=x.device)
+    window = torch.hann_window(n_fft, device=x.device, dtype=z.real.dtype)
+    # Complex IQ STFT (uses both I and Q); real-only STFT would discard Q.
     S = torch.stft(
-        z.real,                                    # real part only for magnitude
+        z,
         n_fft=n_fft,
         hop_length=hop_length,
         win_length=n_fft,
@@ -203,7 +205,9 @@ class _BaseIQDataset(data.Dataset):
         try:
             x, y = self._get_xy(file_path)
         except Exception as e:
-            # Fall back to first sample on read error
+            logger.warning(
+                'IQ sample load failed for %s (%s); using first sample',
+                file_path, e)
             x, y = self._get_xy(self.file_list[0])
 
         return {
@@ -231,7 +235,7 @@ class IQRFDataset(_BaseIQDataset):
 
     def _get_label_for_weight(self, file_path: str):
         content = loadmat(file_path)
-        return int(content['Radio'][0].lstrip('Radio'))
+        return int(str(content['Radio'][0]).removeprefix('Radio'))
 
     def _get_xy(self, file_path: str):
         RF_X, RF_y, *_ = _read_file(file_path, 0.0, 1.0)
@@ -306,12 +310,9 @@ class IQMTLDataset(data.Dataset):
     rep_lr's MTL setup where all tasks share a single input packet.
 
     Returns a dict with keys:
-        rf_x      : (2, 256, 256) float
-        rf_y      : int tensor  — device class 0…15
-        cfo_x     : (2, 256, 256) float
-        cfo_y     : (1,)  float  — standardised CFO
-        channel_x : (2, 256, 256) float
-        channel_y : (104,) float — flattened (2,52) channel output
+        rf_x, cfo_x, channel_x : (2, 256, 256) spectrogram inputs to NeuraCrypt
+        rf_iq, cfo_iq, channel_iq : raw IQ (2, L) for adversary / parity with rep_lr
+        rf_y, cfo_y, channel_y : task labels (same semantics as single-task)
     """
 
     def __init__(self, args, augmentations, split_group: str):
@@ -339,7 +340,10 @@ class IQMTLDataset(data.Dataset):
         file_path = self.file_list[index]
         try:
             return self._load(file_path)
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                'IQMTL sample load failed for %s (%s); using first sample',
+                file_path, e)
             return self._load(self.file_list[0])
 
     def _load(self, file_path: str) -> dict:
@@ -359,10 +363,13 @@ class IQMTLDataset(data.Dataset):
         return {
             'rf_x':      _iq_to_image(RF_X,      n_fft=64, hop_length=8),
             'rf_y':      torch.tensor(RF_y, dtype=torch.long),
+            'rf_iq':     RF_X.contiguous().float(),
             'cfo_x':     _iq_to_image(CFO_X,     n_fft=32, hop_length=4),
             'cfo_y':     CFO_y.view(1).float(),
+            'cfo_iq':    CFO_X.contiguous().float(),
             'channel_x': _iq_to_image(Channel_X, n_fft=32, hop_length=4),
             'channel_y': Channel_y.view(CHANNEL_OUTPUT_DIM).float(),
+            'channel_iq': Channel_X.contiguous().float(),
         }
 
     @staticmethod
