@@ -41,6 +41,11 @@ TARGET_TO_DATASET_KEY = {
     "cfo": "CFO_X",
     "channel": "Channel_X",
 }
+TASK_NAME_TO_ACTIVATION_DIR = {
+    "rf_fingerprinting": "rf",
+    "cfo_estimation": "cfo",
+    "channel_estimation": "channel",
+}
 class RunningStats:
     """Streaming first/second moment tracker for flattened tensors."""
 
@@ -92,7 +97,14 @@ def parse_args():
         description="Compute theorem-based reconstruction lower bounds for anisotropic noise."
     )
     parser.add_argument("--experiment_path", type=str, required=True, help="Experiment directory with args.json and checkpoint.")
-    parser.add_argument("--activations_path", type=str, default=None, help="Activation directory. Defaults to <experiment_path>/activations.")
+    parser.add_argument(
+        "--activation_dir",
+        "--activations_path",
+        dest="activation_dir",
+        type=str,
+        default=None,
+        help="Activation directory containing the .pth files, for example .../rf_cfo_channel.",
+    )
     parser.add_argument("--output_dir", type=str, default=None, help="Output directory. Defaults to <experiment_path>/theoretical_bounds.")
     parser.add_argument("--target", type=str, choices=TARGETS, default=None, help="Target to analyze. If omitted, loop over rf, cfo, and channel.")
     parser.add_argument("--betas", type=float, nargs="+", default=[0.0, 1e-3, 1e-2, 1e-1, 1.0, 5.0, 10.0], help="Noise budgets beta = Tr(Sigma_N).")
@@ -116,9 +128,54 @@ def resolve_targets(cli_args):
 
 
 def resolve_paths(cli_args, train_args):
-    activation_dir = cli_args.activations_path or os.path.join(cli_args.experiment_path, "activations")
-    if not os.path.isdir(activation_dir):
-        raise FileNotFoundError(f"Activations directory not found: {activation_dir}")
+    def map_activation_dir_name(tasks):
+        if isinstance(tasks, str):
+            tasks = [tasks]
+        mapped = [TASK_NAME_TO_ACTIVATION_DIR.get(task) for task in tasks]
+        mapped = [item for item in mapped if item is not None]
+        if not mapped:
+            return None
+        if len(mapped) == 1:
+            return mapped[0]
+        return "_".join(mapped)
+
+    def find_run_component(path):
+        parts = os.path.normpath(path).split(os.sep)
+        for part in parts:
+            if re.fullmatch(r"run_\d+", part):
+                return part
+        return None
+
+    activation_dir_name = map_activation_dir_name(getattr(train_args, "task", None))
+    run_name = find_run_component(cli_args.experiment_path)
+    activation_base = os.environ.get("ACTIVATIONS_BASE")
+
+    candidates = []
+    if cli_args.activation_dir:
+        candidates.append(cli_args.activation_dir)
+    if activation_base and activation_dir_name:
+        if run_name:
+            candidates.append(os.path.join(activation_base, run_name, activation_dir_name))
+        candidates.append(os.path.join(activation_base, activation_dir_name))
+    if run_name and activation_dir_name:
+        candidates.append(os.path.join("/scratch/10608/aadharsh_aadhithya/data/rep_lr/activations_exps", run_name, activation_dir_name))
+    if activation_dir_name:
+        candidates.append(os.path.join(cli_args.experiment_path, "activations"))
+        candidates.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(cli_args.experiment_path))), "activations", activation_dir_name))
+
+    activation_dir = None
+    tried = []
+    for candidate in candidates:
+        if candidate and candidate not in tried:
+            tried.append(candidate)
+            if os.path.isdir(candidate):
+                activation_dir = candidate
+                break
+
+    if activation_dir is None:
+        raise FileNotFoundError(
+            "Activations directory not found. Tried: " + ", ".join(tried)
+        )
 
     output_dir = cli_args.output_dir or os.path.join(cli_args.experiment_path, "theoretical_bounds")
     os.makedirs(output_dir, exist_ok=True)
