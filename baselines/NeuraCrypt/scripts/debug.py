@@ -56,10 +56,11 @@ def _stft_pre_resize(
 ) -> torch.Tensor:
     """Same STFT + log-mag / phase stack as _iq_to_image, before interpolate."""
     I, Q = x[0], x[1]
-    z = torch.complex(I, Q)
-    window = torch.hann_window(n_fft, device=x.device)
+    z = torch.complex(I.to(torch.float32), Q.to(torch.float32))
+    window = torch.hann_window(n_fft, device=x.device, dtype=z.real.dtype)
+    # Must STFT the complex IQ (not z.real) — matches iq_dataset._iq_to_image.
     S = torch.stft(
-        z.real,
+        z,
         n_fft=n_fft,
         hop_length=hop_length,
         win_length=n_fft,

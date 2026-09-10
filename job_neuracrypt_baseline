@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH -J rep_lr           # Job name
 #SBATCH -o rep_lr.o%j       # Name of stdout output file
-#SBATCH -p gh-dev          # Queue (partition) name
+#SBATCH -p gh          # Queue (partition) name
 #SBATCH -N 1               # Total # of nodes
 #SBATCH -n 1               # Total # of mpi tasks
-#SBATCH -t 1:00:00        # Run time (hh:mm:ss)
+#SBATCH -t 12:00:00        # Run time (hh:mm:ss)
 #SBATCH -A DBS24008       # Allocation name (req'd if you have more than 1)
 
 # Other commands must follow all #SBATCH directives...
@@ -15,11 +15,10 @@ module load gcc/13 cuda/12.6 nccl/12.4 #nvidia_math/12.6
 
 conda init
 
-conda activate vllm
+conda activate tsllm
 
-python code/dra_1/neuracrypt.py \
-  --experiment_path /scratch/10608/aadharsh_aadhithya/results/rep_lr/results_20250725_111527/run_1 \
-  --leaked_fraction 0.2 \
-  --decoder_epochs 30 --decoder_batch_size 512 --decoder_lr 1e-3 \
-  --head_epochs 10 --head_batch_size 512 --head_lr 1e-3 \
-  --gpu_id 0
+python baselines/NeuraCrypt/scripts/run_iq_benchmark.py \
+  --pkl_dataset_path /scratch/10608/aadharsh_aadhithya/data/rep_lr/OracleDatasetProcessed-arranged/rf_partition_dict_0.5.pkl \
+  --output_dir baselines/NeuraCrypt/runs/compare_noise_001 \
+  --gpu_id 0 \
+  --epochs 50

@@ -14,3 +14,8 @@ pkl_files/
 \$SCRATCH/
 attack_results_*/
 
+baselines/NeuraCrypt/runs/*
+
+__pycache__/
+*.pyc
+*.png

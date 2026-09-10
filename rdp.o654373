@@ -1,0 +1,460 @@
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) openmpi/5.0.5     2) python3/3.11.8
+
+The following have been reloaded with a version change:
+  1) cuda/12.4 => cuda/12.6
+
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) openmpi/5.0.5     2) python3/3.11.8
+
+The following have been reloaded with a version change:
+  1) cuda/12.6 => cuda/12.4
+
+
+Due to MODULEPATH changes, the following have been reloaded:
+  1) openmpi/5.0.5     2) python3/3.11.8
+
+The following have been reloaded with a version change:
+  1) cuda/12.4 => cuda/12.6
+
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/condabin/conda
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/bin/conda
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/bin/conda-env
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/bin/activate
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/bin/deactivate
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/etc/profile.d/conda.sh
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/etc/fish/conf.d/conda.fish
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/shell/condabin/Conda.psm1
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/shell/condabin/conda-hook.ps1
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/lib/python3.13/site-packages/xontrib/conda.xsh
+no change     /scratch/10608/aadharsh_aadhithya/miniconda/etc/profile.d/conda.csh
+no change     /home1/10608/aadharsh_aadhithya/.bashrc
+No action taken.
+Loading model...
+Loading dataset...
+
+Estimating clip norms (p95 on val set)...
+/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/site-packages/torch/nn/modules/linear.py:134: UserWarning: gemm_and_bias error: CUBLAS_STATUS_NOT_INITIALIZED when calling cublasLtMatmul with transpose_mat1 1 transpose_mat2 0 m 512 n 256 k 1024 mat1_ld 1024 mat2_ld 2048 result_ld 512 abType 0 cType 0 computeType 68 scaleType 0. Will attempt to recover by calling unfused cublas path. (Triggered internally at /pytorch/aten/src/ATen/cuda/CUDABlas.cpp:1765.)
+  return F.linear(input, self.weight, self.bias)
+/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/site-packages/torch/nn/modules/linear.py:134: UserWarning: gemm_and_bias error: CUBLAS_STATUS_NOT_INITIALIZED when calling cublasLtMatmul with transpose_mat1 1 transpose_mat2 0 m 256 n 256 k 512 mat1_ld 512 mat2_ld 512 result_ld 256 abType 0 cType 0 computeType 68 scaleType 0. Will attempt to recover by calling unfused cublas path. (Triggered internally at /pytorch/aten/src/ATen/cuda/CUDABlas.cpp:1765.)
+  return F.linear(input, self.weight, self.bias)
+/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/site-packages/torch/nn/modules/linear.py:134: UserWarning: gemm_and_bias error: CUBLAS_STATUS_NOT_INITIALIZED when calling cublasLtMatmul with transpose_mat1 1 transpose_mat2 0 m 256 n 256 k 2048 mat1_ld 2048 mat2_ld 2048 result_ld 256 abType 0 cType 0 computeType 68 scaleType 0. Will attempt to recover by calling unfused cublas path. (Triggered internally at /pytorch/aten/src/ATen/cuda/CUDABlas.cpp:1765.)
+  return F.linear(input, self.weight, self.bias)
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+OSError: [Errno 16] Device or resource busy: '.nfs6d72e04eba12a7c60002619c'
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+OSError: [Errno 16] Device or resource busy: '.nfsc018253b649bc7040002619e'
+OSError: [Errno 16] Device or resource busy: '.nfs04087bd779b9ead90002619d'
+OSError: [Errno 16] Device or resource busy: '.nfs9f9844c396a9629a000261a0'
+OSError: [Errno 16] Device or resource busy: '.nfs7fc046289afca14f0002619a'
+OSError: [Errno 16] Device or resource busy: '.nfs15e7c962a06ad4be0002619f'
+OSError: [Errno 16] Device or resource busy: '.nfs7ff023860d29e2470002619b'
+OSError: [Errno 16] Device or resource busy: '.nfse0e2ade372f166bf00026199'
+  rf_fingerprinting       p95=10.3737  mean=4.0702  max=19.3131
+  cfo_estimation          p95=10.3737  mean=4.0702  max=19.3133
+  channel_estimation      p95=10.3737  mean=4.0702  max=19.3132
+
+Per-task RDP parameters:
+  rf_fingerprinting       target_mse=0.500941  ε=0.4048  C=10.3737  σ=32.6080
+  cfo_estimation          target_mse=0.345215  ε=0.5448  C=10.3737  σ=28.1102
+  channel_estimation      target_mse=0.337255  ε=0.5546  C=10.3737  σ=27.8591
+
+Baseline (σ=0, no noise on any task):
+  evaluating:   0%|          | 0/103 [00:00<?, ?it/s]/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/site-packages/torch/nn/modules/linear.py:134: UserWarning: gemm_and_bias error: CUBLAS_STATUS_NOT_INITIALIZED when calling cublasLtMatmul with transpose_mat1 1 transpose_mat2 0 m 16 n 256 k 256 mat1_ld 256 mat2_ld 256 result_ld 16 abType 0 cType 0 computeType 68 scaleType 0. Will attempt to recover by calling unfused cublas path. (Triggered internally at /pytorch/aten/src/ATen/cuda/CUDABlas.cpp:1765.)
+  return F.linear(input, self.weight, self.bias)
+  evaluating:   1%|          | 1/103 [00:02<04:30,  2.66s/it]  evaluating:   9%|▊         | 9/103 [00:04<00:41,  2.25it/s]  evaluating:  10%|▉         | 10/103 [00:04<00:37,  2.47it/s]  evaluating:  17%|█▋        | 17/103 [00:06<00:28,  2.99it/s]  evaluating:  17%|█▋        | 18/103 [00:06<00:26,  3.16it/s]  evaluating:  24%|██▍       | 25/103 [00:09<00:23,  3.29it/s]  evaluating:  25%|██▌       | 26/103 [00:09<00:22,  3.44it/s]  evaluating:  32%|███▏      | 33/103 [00:11<00:20,  3.47it/s]  evaluating:  33%|███▎      | 34/103 [00:11<00:19,  3.62it/s]  evaluating:  40%|███▉      | 41/103 [00:13<00:17,  3.53it/s]  evaluating:  41%|████      | 42/103 [00:13<00:16,  3.68it/s]  evaluating:  48%|████▊     | 49/103 [00:15<00:15,  3.53it/s]  evaluating:  49%|████▊     | 50/103 [00:15<00:14,  3.68it/s]  evaluating:  55%|█████▌    | 57/103 [00:17<00:13,  3.50it/s]  evaluating:  56%|█████▋    | 58/103 [00:18<00:12,  3.63it/s]  evaluating:  63%|██████▎   | 65/103 [00:20<00:10,  3.49it/s]  evaluating:  64%|██████▍   | 66/103 [00:20<00:10,  3.65it/s]  evaluating:  71%|███████   | 73/103 [00:22<00:08,  3.50it/s]  evaluating:  72%|███████▏  | 74/103 [00:22<00:07,  3.64it/s]  evaluating:  79%|███████▊  | 81/103 [00:24<00:06,  3.36it/s]  evaluating:  80%|███████▉  | 82/103 [00:24<00:05,  3.52it/s]  evaluating:  86%|████████▋ | 89/103 [00:27<00:04,  3.38it/s]  evaluating:  87%|████████▋ | 90/103 [00:27<00:03,  3.55it/s]  evaluating:  94%|█████████▍| 97/103 [00:29<00:01,  3.37it/s]/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/site-packages/torch/nn/modules/linear.py:134: UserWarning: gemm_and_bias error: CUBLAS_STATUS_NOT_INITIALIZED when calling cublasLtMatmul with transpose_mat1 1 transpose_mat2 0 m 512 n 68 k 1024 mat1_ld 1024 mat2_ld 2048 result_ld 512 abType 0 cType 0 computeType 68 scaleType 0. Will attempt to recover by calling unfused cublas path. (Triggered internally at /pytorch/aten/src/ATen/cuda/CUDABlas.cpp:1765.)
+  return F.linear(input, self.weight, self.bias)
+/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/site-packages/torch/nn/modules/linear.py:134: UserWarning: gemm_and_bias error: CUBLAS_STATUS_NOT_INITIALIZED when calling cublasLtMatmul with transpose_mat1 1 transpose_mat2 0 m 16 n 68 k 256 mat1_ld 256 mat2_ld 256 result_ld 16 abType 0 cType 0 computeType 68 scaleType 0. Will attempt to recover by calling unfused cublas path. (Triggered internally at /pytorch/aten/src/ATen/cuda/CUDABlas.cpp:1765.)
+  return F.linear(input, self.weight, self.bias)
+/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/site-packages/torch/nn/modules/linear.py:134: UserWarning: gemm_and_bias error: CUBLAS_STATUS_NOT_INITIALIZED when calling cublasLtMatmul with transpose_mat1 1 transpose_mat2 0 m 64 n 68 k 128 mat1_ld 128 mat2_ld 128 result_ld 64 abType 0 cType 0 computeType 68 scaleType 0. Will attempt to recover by calling unfused cublas path. (Triggered internally at /pytorch/aten/src/ATen/cuda/CUDABlas.cpp:1765.)
+  return F.linear(input, self.weight, self.bias)
+/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/site-packages/torch/nn/modules/linear.py:134: UserWarning: gemm_and_bias error: CUBLAS_STATUS_NOT_INITIALIZED when calling cublasLtMatmul with transpose_mat1 1 transpose_mat2 0 m 52 n 68 k 256 mat1_ld 256 mat2_ld 256 result_ld 52 abType 0 cType 0 computeType 68 scaleType 0. Will attempt to recover by calling unfused cublas path. (Triggered internally at /pytorch/aten/src/ATen/cuda/CUDABlas.cpp:1765.)
+  return F.linear(input, self.weight, self.bias)
+  evaluating: 100%|██████████| 103/103 [00:29<00:00,  5.04it/s]Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+OSError: [Errno 16] Device or resource busy: '.nfs74be0249ef2caa4d000261a6'
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+OSError: [Errno 16] Device or resource busy: '.nfsff2f8ec6a72d587c000261a3'
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+OSError: [Errno 16] Device or resource busy: '.nfs7f02d94c372c9b3e000261a5'
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 16] Device or resource busy: '.nfs878a9add22b31b3e000261a2'
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+OSError: [Errno 16] Device or resource busy: '.nfsbaad01ee3b3fad91000261a8'
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+OSError: [Errno 16] Device or resource busy: '.nfsad6c0ee478deb907000261a4'
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+OSError: [Errno 16] Device or resource busy: '.nfs59b4672059baa90d000261a1'
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+OSError: [Errno 16] Device or resource busy: '.nfs271eb61486dc00b9000261a7'
+                                                                 RF acc=0.943621  CFO R²=0.598454  Channel R²=0.980576
+
+Evaluating with per-task RDP noise...
+  evaluating:   0%|          | 0/103 [00:00<?, ?it/s]/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/site-packages/torch/nn/modules/linear.py:134: UserWarning: gemm_and_bias error: CUBLAS_STATUS_NOT_INITIALIZED when calling cublasLtMatmul with transpose_mat1 1 transpose_mat2 0 m 512 n 256 k 1024 mat1_ld 1024 mat2_ld 2048 result_ld 512 abType 0 cType 0 computeType 68 scaleType 0. Will attempt to recover by calling unfused cublas path. (Triggered internally at /pytorch/aten/src/ATen/cuda/CUDABlas.cpp:1765.)
+  return F.linear(input, self.weight, self.bias)
+/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/site-packages/torch/nn/modules/linear.py:134: UserWarning: gemm_and_bias error: CUBLAS_STATUS_NOT_INITIALIZED when calling cublasLtMatmul with transpose_mat1 1 transpose_mat2 0 m 256 n 256 k 512 mat1_ld 512 mat2_ld 512 result_ld 256 abType 0 cType 0 computeType 68 scaleType 0. Will attempt to recover by calling unfused cublas path. (Triggered internally at /pytorch/aten/src/ATen/cuda/CUDABlas.cpp:1765.)
+  return F.linear(input, self.weight, self.bias)
+/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/site-packages/torch/nn/modules/linear.py:134: UserWarning: gemm_and_bias error: CUBLAS_STATUS_NOT_INITIALIZED when calling cublasLtMatmul with transpose_mat1 1 transpose_mat2 0 m 256 n 256 k 2048 mat1_ld 2048 mat2_ld 2048 result_ld 256 abType 0 cType 0 computeType 68 scaleType 0. Will attempt to recover by calling unfused cublas path. (Triggered internally at /pytorch/aten/src/ATen/cuda/CUDABlas.cpp:1765.)
+  return F.linear(input, self.weight, self.bias)
+/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/site-packages/torch/nn/modules/linear.py:134: UserWarning: gemm_and_bias error: CUBLAS_STATUS_NOT_INITIALIZED when calling cublasLtMatmul with transpose_mat1 1 transpose_mat2 0 m 16 n 256 k 256 mat1_ld 256 mat2_ld 256 result_ld 16 abType 0 cType 0 computeType 68 scaleType 0. Will attempt to recover by calling unfused cublas path. (Triggered internally at /pytorch/aten/src/ATen/cuda/CUDABlas.cpp:1765.)
+  return F.linear(input, self.weight, self.bias)
+  evaluating:   1%|          | 1/103 [00:00<01:07,  1.51it/s]  evaluating:   6%|▌         | 6/103 [00:00<00:09,  9.92it/s]  evaluating:   9%|▊         | 9/103 [00:01<00:08, 10.78it/s]  evaluating:  12%|█▏        | 12/103 [00:01<00:06, 13.38it/s]  evaluating:  17%|█▋        | 17/103 [00:01<00:05, 14.43it/s]  evaluating:  18%|█▊        | 19/103 [00:01<00:05, 15.16it/s]  evaluating:  23%|██▎       | 24/103 [00:01<00:03, 21.31it/s]  evaluating:  26%|██▌       | 27/103 [00:02<00:04, 15.92it/s]  evaluating:  31%|███       | 32/103 [00:02<00:03, 21.38it/s]  evaluating:  34%|███▍      | 35/103 [00:02<00:04, 16.31it/s]  evaluating:  39%|███▉      | 40/103 [00:02<00:02, 21.51it/s]  evaluating:  43%|████▎     | 44/103 [00:02<00:03, 17.11it/s]  evaluating:  48%|████▊     | 49/103 [00:03<00:03, 16.81it/s]  evaluating:  50%|█████     | 52/103 [00:03<00:02, 18.13it/s]  evaluating:  55%|█████▌    | 57/103 [00:03<00:02, 17.13it/s]  evaluating:  58%|█████▊    | 60/103 [00:03<00:02, 18.26it/s]  evaluating:  63%|██████▎   | 65/103 [00:04<00:02, 17.47it/s]  evaluating:  65%|██████▌   | 67/103 [00:04<00:02, 17.82it/s]  evaluating:  70%|██████▉   | 72/103 [00:04<00:01, 23.16it/s]  evaluating:  73%|███████▎  | 75/103 [00:04<00:01, 17.00it/s]  evaluating:  78%|███████▊  | 80/103 [00:04<00:01, 22.10it/s]  evaluating:  81%|████████  | 83/103 [00:05<00:01, 16.52it/s]  evaluating:  85%|████████▌ | 88/103 [00:05<00:00, 21.51it/s]  evaluating:  88%|████████▊ | 91/103 [00:05<00:00, 16.31it/s]  evaluating:  93%|█████████▎| 96/103 [00:05<00:00, 21.24it/s]  evaluating:  97%|█████████▋| 100/103 [00:05<00:00, 17.32it/s]/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/site-packages/torch/nn/modules/linear.py:134: UserWarning: gemm_and_bias error: CUBLAS_STATUS_NOT_INITIALIZED when calling cublasLtMatmul with transpose_mat1 1 transpose_mat2 0 m 512 n 68 k 1024 mat1_ld 1024 mat2_ld 2048 result_ld 512 abType 0 cType 0 computeType 68 scaleType 0. Will attempt to recover by calling unfused cublas path. (Triggered internally at /pytorch/aten/src/ATen/cuda/CUDABlas.cpp:1765.)
+  return F.linear(input, self.weight, self.bias)
+/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/site-packages/torch/nn/modules/linear.py:134: UserWarning: gemm_and_bias error: CUBLAS_STATUS_NOT_INITIALIZED when calling cublasLtMatmul with transpose_mat1 1 transpose_mat2 0 m 16 n 68 k 256 mat1_ld 256 mat2_ld 256 result_ld 16 abType 0 cType 0 computeType 68 scaleType 0. Will attempt to recover by calling unfused cublas path. (Triggered internally at /pytorch/aten/src/ATen/cuda/CUDABlas.cpp:1765.)
+  return F.linear(input, self.weight, self.bias)
+/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/site-packages/torch/nn/modules/linear.py:134: UserWarning: gemm_and_bias error: CUBLAS_STATUS_NOT_INITIALIZED when calling cublasLtMatmul with transpose_mat1 1 transpose_mat2 0 m 64 n 68 k 128 mat1_ld 128 mat2_ld 128 result_ld 64 abType 0 cType 0 computeType 68 scaleType 0. Will attempt to recover by calling unfused cublas path. (Triggered internally at /pytorch/aten/src/ATen/cuda/CUDABlas.cpp:1765.)
+  return F.linear(input, self.weight, self.bias)
+/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/site-packages/torch/nn/modules/linear.py:134: UserWarning: gemm_and_bias error: CUBLAS_STATUS_NOT_INITIALIZED when calling cublasLtMatmul with transpose_mat1 1 transpose_mat2 0 m 52 n 68 k 256 mat1_ld 256 mat2_ld 256 result_ld 52 abType 0 cType 0 computeType 68 scaleType 0. Will attempt to recover by calling unfused cublas path. (Triggered internally at /pytorch/aten/src/ATen/cuda/CUDABlas.cpp:1765.)
+  return F.linear(input, self.weight, self.bias)
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+OSError: [Errno 16] Device or resource busy: '.nfs901f943aef88f739000261ac'
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+OSError: [Errno 16] Device or resource busy: '.nfsa66d3c9d3b66b343000261ae'
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+OSError: [Errno 16] Device or resource busy: '.nfsf574f66fcce984fc000261a9'
+Traceback (most recent call last):
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+OSError: [Errno 16] Device or resource busy: '.nfs8e15bbc2985fc0a0000261ab'
+Traceback (most recent call last):
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+OSError: [Errno 16] Device or resource busy: '.nfs12c716f45ba6c066000261aa'
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+OSError: [Errno 16] Device or resource busy: '.nfs9ee31ef6b336e1a6000261ad'
+Traceback (most recent call last):
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+OSError: [Errno 16] Device or resource busy: '.nfse7409b4cde92f9ae000261af'
+Traceback (most recent call last):
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 303, in _run_finalizers
+    finalizer()
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 227, in __call__
+    res = self._callback(*self._args, **self._kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/multiprocessing/util.py", line 136, in _remove_temp_dir
+    rmtree(tempdir, onerror=onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 752, in rmtree
+    _rmtree_safe_fd(fd, path, onerror)
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 703, in _rmtree_safe_fd
+    onerror(os.unlink, fullname, sys.exc_info())
+  File "/scratch/10608/aadharsh_aadhithya/miniconda/envs/tsllm/lib/python3.11/shutil.py", line 701, in _rmtree_safe_fd
+    os.unlink(entry.name, dir_fd=topfd)
+OSError: [Errno 16] Device or resource busy: '.nfs290c3079489a4316000261b0'
+                                                               
+========================================================================
+RDP Baseline — Privacy-Utility Tradeoff
+(Per-task noise derived from target adversary reconstruction MSE)
+========================================================================
+task           final_mse    epsilon      sigma   utility(RDP)  utility(rep_lr)
+────────────────────────────────────────────────────────────────────────
+rf              0.500941     0.4048    32.6080       0.071085         0.518564
+cfo             0.345215     0.5448    28.1102    -570.860216         0.307801
+channel         0.337255     0.5546    27.8591      -0.073352         0.405239
+
+Baseline utility (same model, no noise):
+  rf acc     = 0.943621
+  cfo R²     = 0.598454
+  channel R² = 0.980576
+
+Results → baselines/rdp/results/rdp_results.json
