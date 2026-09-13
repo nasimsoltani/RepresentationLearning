@@ -11,8 +11,11 @@ how much the representations leak.
 git clone https://github.com/nasimsoltani/RepresentationLearning.git
 cd RepresentationLearning
 uv sync                     # Python 3.11+
+source .venv/bin/activate   # or prefix the commands below with `uv run`
 cp .env.example .env        # then edit the paths in .env
 ```
+
+`uv sync` also installs the `hf` command used below to download data and models.
 
 ### Dataset
 
@@ -167,7 +170,7 @@ The attack runs in two steps on a released model.
 ```bash
 RUN=rf_fingerprinting_cfo_estimation_channel_estimation_20250725_234643   # joint RF+CFO+Channel encoder
 hf download Aadharsh/RepresentationLearning-models \
-  --include "runs/$RUN/args.json" "runs/$RUN/*.pt" --local-dir models
+  --include "runs/$RUN/args.json" --include "runs/$RUN/*.pt" --local-dir models
 
 python code/dra_1/extract_activations.py \
   --model_path models/runs/$RUN \
