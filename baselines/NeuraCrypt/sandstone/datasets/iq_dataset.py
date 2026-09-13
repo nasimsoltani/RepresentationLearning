@@ -21,6 +21,7 @@ arbitrary reshape used before.
 """
 
 import logging
+import os
 import random
 import pickle
 from collections import Counter
@@ -71,19 +72,25 @@ def _read_file(file_path: str, mean_cfo: float, std_cfo: float):
     Channel_X: (2, 160)         float
     Channel_y: (2, 52)          float
     """
+    # Entries may be absolute (legacy pickles) or dataset-root-relative.
+    if not os.path.isabs(file_path):
+        root = os.getenv('DATA_BASE_PATH')
+        if not root:
+            raise ValueError(
+                f"'{file_path}' is relative but DATA_BASE_PATH is not set "
+                "(see .env.example)."
+            )
+        file_path = os.path.join(root, file_path)
+
     content = loadmat(file_path)
     RF_input = torch.from_numpy(content['Packet'])[:, 0]
     RF_output = content['Radio'][0]
 
-    parts = file_path.split('/')
-    # drop leading empty string from absolute path
-    parts = [p for p in parts if p]
-    filename = parts[-1]
-    dir_parts = parts[:-1]
+    directory, filename = os.path.split(file_path)
     suffix = filename.removeprefix('RFfingerprinting')
 
     def sibling_path(prefix):
-        return '/' + '/'.join(dir_parts) + '/' + prefix + suffix
+        return os.path.join(directory, prefix + suffix)
 
     content_cfo = loadmat(sibling_path('CFOEstimation'))
     CFO_input = torch.from_numpy(content_cfo['LSTF'])[:, 0]

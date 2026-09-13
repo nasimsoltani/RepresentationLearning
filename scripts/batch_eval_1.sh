@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# --- resolved from .env (see .env.example) ---
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -f "$REPO_ROOT/.env" ]; then set -a; . "$REPO_ROOT/.env"; set +a; fi
+: "${DATA_BASE_PATH:?set DATA_BASE_PATH in .env (see .env.example)}"
+: "${PKL_FILE_PATH:?set PKL_FILE_PATH in .env (see .env.example)}"
+DATASET_PATH="${DATASET_PATH:-$PKL_FILE_PATH/rf_partition_dict_${PORTION_TO_USE:-0.5}.pkl}"
+# ---------------------------------------------
+
+
 # =================================================================================
 # Batch Evaluation Script for Representation Learning Models
 # =================================================================================
@@ -32,7 +41,7 @@ fi
 
 # IMPORTANT: SET THIS PATH to the top-level directory containing all your experiment results.
 # Can be overridden by command line argument
-DEFAULT_RESULTS_DIR="/work/10608/aadharsh_aadhithya/vista/RepresentationLearning/results_parallel_20250803_153540/rf_fixed"
+DEFAULT_RESULTS_DIR="$REPO_ROOT/results_parallel_20250803_153540/rf_fixed"
 
 # Parse command line arguments
 if [ $# -eq 1 ]; then
@@ -42,8 +51,7 @@ else
 fi
 
 # IMPORTANT: SET THIS to the path of the .pkl dataset to use for all evaluations.
-EVAL_DATASET_PATH="$PKL_FILE_PATH/rf_partition_dict_0.5.pkl" 
-#EVAL_DATASET_PATH="/home/hofmann/Documents/projects/RepresentationLearning/dataset/rf_partition_dict_0.5.pkl" # <-- CHANGE THIS
+EVAL_DATASET_PATH="${EVAL_DATASET_PATH:-$DATASET_PATH}"
 
 GPU_ID=0
 TEST_FRACTION=0.5

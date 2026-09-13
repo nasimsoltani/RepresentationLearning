@@ -34,6 +34,10 @@ def main():
                         help='Task(s) to train. For MTL, provide multiple tasks.')
     parser.add_argument('--pkl_dataset_path', type=str, required=True, 
                         help='Path to the pkl dataset file.')
+    parser.add_argument('--data_root', type=str, default=None,
+                        help='Directory holding the .mat files. Required when the '
+                             'partition pickle stores relative filenames. Defaults '
+                             'to the DATA_BASE_PATH environment variable.')
     
     # Training hyperparameters
     parser.add_argument('--epochs', type=int, default=300, help='Number of training epochs.')
@@ -117,6 +121,10 @@ def main():
         ID_class_dict[this_key] = i
     print(ID_class_dict)
     num_classes = len(list(ID_class_dict.keys()))
+
+    # Make the dataset root visible to py_datasets (also in DataLoader workers)
+    if args.data_root:
+        os.environ['DATA_BASE_PATH'] = args.data_root
 
     # Load data from pickle file
     with open(args.pkl_dataset_path, 'rb') as handle:

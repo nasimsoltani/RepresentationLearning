@@ -19,3 +19,5 @@ baselines/NeuraCrypt/runs/*
 __pycache__/
 *.pyc
 *.png
+# downloaded model registry / checkpoints (code/rep_lr/inference.py)
+models/

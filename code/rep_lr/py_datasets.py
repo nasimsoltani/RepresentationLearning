@@ -14,38 +14,56 @@ from torch.fft import fftshift as FFTshift
 import os
 from scipy.io import loadmat 
 
-def read_file(file_path, max_cfo):
+# Prefix of the RF-fingerprinting files; the CFO/Channel parts of the same
+# sample share the identical suffix under a different prefix.
+_RF_PREFIX = 'RFfingerprinting'
+_SIBLING_PREFIXES = ('CFOEstimation', 'ChannelEstimation')
+
+
+def resolve_sample_paths(file_path, data_root=None):
+	"""Map an RF-fingerprinting entry to the 3 .mat files that form one sample.
+
+	``file_path`` may be either an absolute path (legacy partition pickles, used
+	as-is) or a bare filename relative to the dataset root (current pickles).
+	The root is taken from ``data_root`` when given, else the ``DATA_BASE_PATH``
+	environment variable.
+
+	Returns (rf_path, cfo_path, channel_path).
+	"""
+	if not os.path.isabs(file_path):
+		root = data_root if data_root is not None else os.getenv('DATA_BASE_PATH')
+		if not root:
+			raise ValueError(
+				f"'{file_path}' is relative but no dataset root is set. Pass "
+				"--data_root or set DATA_BASE_PATH (see .env.example)."
+			)
+		file_path = os.path.join(root, file_path)
+
+	directory, filename = os.path.split(file_path)
+	if not filename.startswith(_RF_PREFIX):
+		raise ValueError(f"expected a '{_RF_PREFIX}*' file, got '{filename}'")
+	suffix = filename[len(_RF_PREFIX):]
+
+	return (file_path,) + tuple(
+		os.path.join(directory, prefix + suffix) for prefix in _SIBLING_PREFIXES
+	)
+
+def read_file(file_path, max_cfo, data_root=None):
 	""" gets a file_path for RF fingerprinting input part, and return associated data parts
 	for CFO estimation and channel estimation too """
 
 	# file_path is the RFfingerprinting file path, read all 3 paths
-	content = loadmat(file_path)
+	rf_path, cfo_path, channel_path = resolve_sample_paths(file_path, data_root)
+
+	content = loadmat(rf_path)
 	RF_input = torch.from_numpy(content['Packet'])[:,0]
 	RF_output = content['Radio'][0]
 
-	file_path_list = file_path.split('/')
-	file_path_list.pop(0)
-	filename = file_path_list[-1]
-	file_path_list.pop()
-	
-	suffix_filename = filename.lstrip('RFfingerprinting')
-
-	# for CFO filepath
-	new_filename = '/CFOEstimation'+suffix_filename
-	new_filepath = ''
-	for element in file_path_list:
-		new_filepath +='/'+ element
-	new_filepath += new_filename
-	content = loadmat(new_filepath)
+	content = loadmat(cfo_path)
 	CFO_input = torch.from_numpy(content['LSTF'])[:,0]
 	CFO_output = torch.from_numpy(content['CFO']).float().squeeze()  # Fix dtype and shape
-	# for Channel Estimation filepath
-	new_filename = '/ChannelEstimation'+suffix_filename
-	new_filepath = ''
-	for element in file_path_list:
-		new_filepath +='/'+ element
-	new_filepath += new_filename
-	content = loadmat(new_filepath)
+
+	content = loadmat(channel_path)
 	Channel_input = torch.from_numpy(content['LLTF'])[:,0]
 	Channel_output = torch.from_numpy(content['EstChannnel'])[:,0]
 	# normalize everything and send out

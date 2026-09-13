@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# --- resolved from .env (see .env.example) ---
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -f "$REPO_ROOT/.env" ]; then set -a; . "$REPO_ROOT/.env"; set +a; fi
+: "${DATA_BASE_PATH:?set DATA_BASE_PATH in .env (see .env.example)}"
+: "${PKL_FILE_PATH:?set PKL_FILE_PATH in .env (see .env.example)}"
+DATASET_PATH="${DATASET_PATH:-$PKL_FILE_PATH/rf_partition_dict_${PORTION_TO_USE:-0.5}.pkl}"
+# ---------------------------------------------
+
+
 if [ -f .env ]; then
     echo "Loading environment variables from .env file"
     set -o allexport
@@ -20,7 +29,6 @@ fi
 # =================================================================================
 
 # --- Configuration ---
-DATASET_PATH="$PKL_FILE_PATH/rf_partition_dict_0.5.pkl"
 GPU_ID=0
 
 # --- Create a Unique Directory ---
@@ -201,6 +209,7 @@ python code/rep_lr/main.py \
     --mtl \
     --task rf_fingerprinting cfo_estimation channel_estimation \
     --pkl_dataset_path $DATASET_PATH \
+    --data_root "$DATA_BASE_PATH" \
     --save_path "${RESULTS_DIR}/rf_cfo_channel" \
     --epochs 300 \
     --batch_size 256 \

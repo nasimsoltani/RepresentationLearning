@@ -15,6 +15,7 @@ from models import (ComplexSequenceProjector, UpsamplingProjector, Encoder,
                    RFClassificationHead, ChannelEstimationHead, CFOEstimationHead,
                    SimpleCFOEstimationHead, DirectCFOEstimationHead, CFOAdaptiveHead, TaskAdaptiveEncoder)
 from py_datasets import TrainDataset, TrainDatasetRFixed
+from model_io import build_model, load_weights
 from torch.utils.data import DataLoader
 
 def evaluate_rf_fingerprinting(model, test_dl, device, output_dir, class_names, args):
@@ -677,6 +678,12 @@ def main():
     parser.add_argument('--eval_pkl_dataset_path', type=str, default=None, help='Path to a specific pkl dataset file for evaluation. Overrides path in args.json.')
     parser.add_argument('--gpu_id', default=0, type=int, help='ID of GPU to be used.')
     parser.add_argument('--test_fraction', type=float, default=1.0, help='Fraction of the test set to use for evaluation.')
+    parser.add_argument('--seed', type=int, default=0, help='Seed for choosing the --test_fraction subset, so subset evaluations are reproducible.')
+    parser.add_argument('--data_root', type=str, default=None,
+                        help='Directory holding the .mat files. Required when the '
+                             'partition pickle stores relative filenames. Falls back '
+                             'to the value recorded at training time, then to the '
+                             'DATA_BASE_PATH environment variable.')
     cli_args = parser.parse_args()
 
     # Determine model directory
@@ -697,6 +704,11 @@ def main():
     device = torch.device(f'cuda:{train_args.gpu_id}' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
+    # Make the dataset root visible to py_datasets (also in DataLoader workers)
+    data_root = cli_args.data_root or getattr(train_args, 'data_root', None)
+    if data_root:
+        os.environ['DATA_BASE_PATH'] = data_root
+
     # Load test data
     eval_data_path = cli_args.eval_pkl_dataset_path
     if eval_data_path:
@@ -715,8 +727,8 @@ def main():
     mean_cfo = content['mean_cfo']
     std_cfo = content['std_cfo']
     
-    # Shuffle and subset the test set
-    random.shuffle(test_list)
+    # Shuffle and subset the test set (seeded, so the subset is reproducible)
+    random.Random(cli_args.seed).shuffle(test_list)
     num_test_samples = int(len(test_list) * train_args.test_fraction)
     test_list = test_list[:num_test_samples]
     print(f"Using {num_test_samples} samples from the test set ({train_args.test_fraction*100:.2f}%).")
@@ -738,130 +750,12 @@ def main():
     # Use batch_size=1 for test loader because of variable number of slices
     test_dl = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
 
-    # After train_args is loaded and before model construction
-    encoder_num_blocks = getattr(train_args, 'encoder_num_blocks', 1)
-
-    # Re-create model architecture
     is_mtl = getattr(train_args, 'mtl', False)
-
-    if is_mtl:
-        print("Reconstructing MTL model architecture.")
-        projections = torch.nn.ModuleDict()
-        heads = torch.nn.ModuleDict()
-
-        for task in train_args.task:
-            if task == 'rf_fingerprinting':
-                seq_len = train_args.slice_len
-                projections[task] = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
-                heads[task] = RFClassificationHead(input_dim=2*train_args.d2, num_classes=num_classes, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
-            
-            elif task == 'channel_estimation':
-                seq_len = 160
-                projections[task] = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
-                heads[task] = ChannelEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, output_length=52, dropout=train_args.dropout)
-
-            elif task == 'cfo_estimation':
-                seq_len = 160
-                projections[task] = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
-                
-                # Choose CFO head based on training arguments
-                if getattr(train_args, 'adaptive_cfo', False):
-                    heads[task] = CFOAdaptiveHead(input_dim=2*train_args.d2, hidden_dim=128, dropout=0.1)
-                elif getattr(train_args, 'simple_cfo', False):
-                    heads[task] = SimpleCFOEstimationHead(input_dim=2*train_args.d2, hidden_dim=64, dropout=0.1)
-                else:
-                    heads[task] = CFOEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
-
-        # Choose encoder based on training arguments (MTL)
-        encoder_input_dim = train_args.proj_seq_len
-        input_channels = 2
-        if getattr(train_args, 'fusion_type', 'sum') == 'concat':
-            encoder_input_dim = train_args.proj_seq_len * len(train_args.task)
-        elif getattr(train_args, 'fusion_type', 'sum') == 'depth_concat':
-            input_channels = 2 * len(train_args.task)
-        
-        if getattr(train_args, 'task_adaptive_encoder', False):
-            print("Using task-adaptive encoder.")
-            encoder = TaskAdaptiveEncoder(slice_size=encoder_input_dim, output_dim=train_args.d2, dropout=train_args.dropout, num_blocks=encoder_num_blocks, input_channels=input_channels)
-        else:
-            encoder = Encoder(slice_size=encoder_input_dim, output_dim=train_args.d2, dropout=train_args.dropout, num_blocks=encoder_num_blocks, input_channels=input_channels)
-        
-        model = torch.nn.ModuleDict({
-            'projections': projections,
-            'encoder': encoder,
-            'heads': heads
-        })
-    else:
-        print("Reconstructing single-task model architecture.")
-        task_name = train_args.task
-        
-        # Create projection layer based on task
-        if task_name == 'cfo_estimation':
-            # Use ComplexSequenceProjector for CFO (updated from UpsamplingProjector)
-            seq_len = 160  # CFO input length
-            projection = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
-        else:
-            seq_len = train_args.slice_len if task_name == 'rf_fingerprinting' else 160
-            projection = ComplexSequenceProjector(input_seq_len=seq_len, output_seq_len=train_args.proj_seq_len, hidden_dim=train_args.proj_hidden_dim)
-        
-        # Choose encoder based on training arguments (Single-task)
-        if getattr(train_args, 'task_adaptive_encoder', False):
-            encoder = TaskAdaptiveEncoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout, num_blocks=encoder_num_blocks, input_channels=2)
-        else:
-            encoder = Encoder(slice_size=train_args.proj_seq_len, output_dim=train_args.d2, dropout=train_args.dropout, num_blocks=encoder_num_blocks, input_channels=2)
-
-        if task_name == 'rf_fingerprinting':
-            task_head = RFClassificationHead(input_dim=2*train_args.d2, num_classes=num_classes, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
-        elif task_name == 'channel_estimation':
-            task_head = ChannelEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, output_length=52, dropout=train_args.dropout)
-        elif task_name == 'cfo_estimation':
-            # Choose CFO head based on training arguments
-            if getattr(train_args, 'direct_cfo', False):
-                task_head = DirectCFOEstimationHead(input_seq_len=train_args.proj_seq_len, hidden_dim=128, dropout=0.1)
-            elif getattr(train_args, 'adaptive_cfo', False):
-                task_head = CFOAdaptiveHead(input_dim=2*train_args.d2, hidden_dim=128, dropout=0.1)
-            elif getattr(train_args, 'simple_cfo', False):
-                task_head = SimpleCFOEstimationHead(input_dim=2*train_args.d2, hidden_dim=64, dropout=0.1)
-            else:
-                task_head = CFOEstimationHead(input_dim=2*train_args.d2, hidden_dim=train_args.head_hidden_dim, dropout=train_args.dropout)
-        else:
-            raise ValueError(f"Unknown task: {task_name}")
-
-        model = torch.nn.ModuleDict({
-            'projection': projection,
-            'encoder': encoder,
-            'head': task_head
-        })
-
-    model.to(device)
+    model = build_model(train_args, num_classes).to(device)
 
     # Load trained weights
     print(f"Loading weights from {cli_args.model_path}")
-    checkpoint = torch.load(cli_args.model_path, map_location=device)
-    
-    if is_mtl:
-        model['projections'].load_state_dict(checkpoint['projections_state_dict'])
-        model['encoder'].load_state_dict(checkpoint['encoder_state_dict'])
-        model['heads'].load_state_dict(checkpoint['heads_state_dict'])
-    else:
-        # Single-task models saved as a single state dict
-        if 'model_state_dict' in checkpoint: 
-            model_state_dict = checkpoint['model_state_dict']
-            
-            # For CFO estimation with UpsamplingProjector, filter out projection keys since it has no parameters
-            # The new models (both single and MTL) are saved with a consistent 
-            # ModuleDict structure, so we can load the state dict directly.
-            # The old filtering logic for legacy models is no longer needed.
-            model.load_state_dict(model_state_dict)
-        
-        # Format for models where each module is saved separately
-        elif 'projection_state_dict' in checkpoint and 'encoder_state_dict' in checkpoint and 'head_state_dict' in checkpoint:
-            model['projection'].load_state_dict(checkpoint['projection_state_dict'])
-            model['encoder'].load_state_dict(checkpoint['encoder_state_dict'])
-            model['head'].load_state_dict(checkpoint['head_state_dict'])
-        
-        else:
-            raise KeyError("Could not find model weights in a recognized format in the checkpoint.")
+    load_weights(model, cli_args.model_path, device)
 
     model.eval()
     print("Model loaded successfully.")
