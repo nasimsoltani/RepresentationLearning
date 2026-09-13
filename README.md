@@ -1,3 +1,4 @@
-- Channel estimator architecture (page 3 first column): https://genesys-lab.org/papers/SPiNN.pdf
-- CFO estimator architecture (figure 7 (a)) : https://par.nsf.gov/servlets/purl/10487629 
-- RF fingerprinting architecture: ?
+This is the code for the paper Sharing of Irreversible Latent Features in lieu of RF IQ Data for
+Multiple Downstream Learning Tasks . 
+
+For the latest instructions and code please look at baselines branch. Changes will be merged onto main soon. 
